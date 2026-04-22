@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════
+# Atheer Platform — .gitignore
+# ═══════════════════════════════════════
+
+# ── Go ──
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+atheer-test.exe
+atheer-switch.exe
+
+# ── IDE ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Environment ──
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# ── Node / Dashboard ──
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/.env.local
+
+# ── Docker ──
+docker-compose.override.yml
+
+# ── Temp ──
+tmp/
+*.log
+*.tmp
+coverage.out
+coverage.html
+
+# ── OS ──
+.DS_Store
+*.swp
+desktop.ini
