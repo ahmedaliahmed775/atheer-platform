@@ -1,7 +1,10 @@
+// Modified for v3.0 Security Hardening
 package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,7 +24,7 @@ import (
 func main() {
 	// === Setup Logger ===
 	config.SetupLogger()
-	slog.Info("Starting Atheer Switch V3.0")
+	slog.Info("Starting Atheer Switch V3.0 — Security Hardened")
 
 	// === Load Configuration ===
 	cfg, err := config.Load()
@@ -49,6 +52,19 @@ func main() {
 	}
 	defer rdb.Close()
 
+	// === Initialize KMS for Seed encryption ===
+	kms, err := service.NewLocalKMS()
+	if err != nil {
+		slog.Error("Failed to initialize KMS", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("KMS initialized for Seed encryption")
+
+	// === Initialize Attestation Verifier ===
+	strictAttestation := !config.IsDevelopment()
+	attestation := service.NewAttestationVerifier(strictAttestation)
+	slog.Info("Attestation verifier initialized", "strict", strictAttestation)
+
 	// === Initialize Repositories ===
 	deviceRepo := repository.NewDeviceRepository(db)
 	txRepo := repository.NewTransactionRepository(db)
@@ -56,8 +72,8 @@ func main() {
 	disputeRepo := repository.NewDisputeRepository(db)
 	_ = repository.NewAuditLogRepository(db)
 
-	// === Initialize Services ===
-	enrollService := service.NewEnrollmentService(deviceRepo)
+	// === Initialize Services (with KMS + Attestation) ===
+	enrollService := service.NewEnrollmentService(deviceRepo, kms, attestation)
 	deviceService := service.NewDeviceService(deviceRepo)
 	txService := service.NewTransactionService(txRepo, deviceRepo)
 	disputeService := service.NewDisputeService(disputeRepo, txRepo)
@@ -71,7 +87,9 @@ func main() {
 	disputeHandler := handler.NewDisputeHandler(disputeService)
 	limitsHandler := handler.NewLimitsHandler(limitsService)
 
-	// === Initialize Pipeline Middleware (Layers 1-9) ===
+	// === Initialize Pipeline Middleware (v3.0: 7 layers) ===
+	switchRecordRepo := repository.NewSwitchRecordRepository(db)
+
 	rateLimiter := middleware.NewRateLimiter(rdb,
 		cfg.Limits.RateLimitPerDevice,
 		cfg.Limits.RateLimitPerWallet,
@@ -79,12 +97,10 @@ func main() {
 	)
 	requestLogger := middleware.NewRequestLogger()
 	antiReplay := middleware.NewAntiReplay(rdb)
-	attestationVerifier := middleware.NewAttestationVerifier(deviceRepo)
-	sigVerifierA := middleware.NewSignatureVerifierA(deviceRepo)
-	sigVerifierB := middleware.NewSignatureVerifierB(deviceRepo)
-	crossValidator := middleware.NewCrossValidator(cfg.Security.TxTimeWindowMinutes)
-	limitsChecker := middleware.NewLimitsChecker(limitsRepo, txRepo)
-	idempotency := middleware.NewIdempotency(rdb, cfg.Security.IdempotencyTTLSeconds)
+	limitsChecker := middleware.NewLimitsChecker(limitsRepo, txRepo, switchRecordRepo)
+	sigVerifierA := middleware.NewSignatureVerifierA(switchRecordRepo)
+	payeeTypeVerifier := middleware.NewPayeeTypeVerifier(switchRecordRepo)
+	txTypeResolver := middleware.NewTransactionTypeResolver()
 
 	// === Setup Router with all dependencies ===
 	deps := &router.Dependencies{
@@ -95,20 +111,20 @@ func main() {
 		DisputeHandler:     disputeHandler,
 		LimitsHandler:      limitsHandler,
 
-		RateLimiter:         rateLimiter,
-		RequestLogger:       requestLogger,
-		AntiReplay:          antiReplay,
-		AttestationVerifier: attestationVerifier,
-		SigVerifierA:        sigVerifierA,
-		SigVerifierB:        sigVerifierB,
-		CrossValidator:      crossValidator,
-		LimitsChecker:       limitsChecker,
-		Idempotency:         idempotency,
+		RateLimiter:       rateLimiter,
+		RequestLogger:     requestLogger,
+		AntiReplay:        antiReplay,
+		LimitsChecker:     limitsChecker,
+		SigVerifierA:      sigVerifierA,
+		PayeeTypeVerifier: payeeTypeVerifier,
+		TxTypeResolver:    txTypeResolver,
+
+		AllowDevCORS: config.IsDevelopment(),
 	}
 
 	r := router.New(deps)
 
-	// === Start HTTP Server ===
+	// === Start Server (TLS/mTLS in production, HTTP in dev) ===
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:      r,
@@ -116,17 +132,57 @@ func main() {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
-	go func() {
-		slog.Info("Atheer Switch listening",
-			"port", cfg.Server.Port,
-			"version", "3.0.0",
-			"pipeline", "10 layers active",
-		)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Server failed", "error", err)
-			os.Exit(1)
+	// Configure mTLS if certificates are provided
+	if cfg.Server.TLSCertPath != "" && cfg.Server.TLSKeyPath != "" {
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS13,
 		}
-	}()
+
+		// Load client CA for mTLS if provided
+		mtlsCAPath := os.Getenv("MTLS_CLIENT_CA_PATH")
+		if mtlsCAPath != "" {
+			caCert, err := os.ReadFile(mtlsCAPath)
+			if err != nil {
+				slog.Error("Failed to read mTLS CA certificate", "error", err)
+				os.Exit(1)
+			}
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+			tlsConfig.ClientCAs = caCertPool
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			slog.Info("mTLS enabled — client certificates required")
+		}
+
+		srv.TLSConfig = tlsConfig
+
+		go func() {
+			slog.Info("Atheer Switch listening (TLS/mTLS)",
+				"port", cfg.Server.Port,
+				"version", "3.0.0",
+				"pipeline", "7 layers active",
+				"mtls", mtlsCAPath != "",
+			)
+			if err := srv.ListenAndServeTLS(cfg.Server.TLSCertPath, cfg.Server.TLSKeyPath); err != nil && err != http.ErrServerClosed {
+				slog.Error("Server failed", "error", err)
+				os.Exit(1)
+			}
+		}()
+	} else {
+		if !config.IsDevelopment() {
+			slog.Warn("🔴 Running WITHOUT TLS — this is NOT safe for production!")
+		}
+		go func() {
+			slog.Info("Atheer Switch listening (HTTP — dev only)",
+				"port", cfg.Server.Port,
+				"version", "3.0.0",
+				"pipeline", "7 layers active",
+			)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("Server failed", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)

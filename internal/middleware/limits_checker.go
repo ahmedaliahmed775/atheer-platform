@@ -1,3 +1,4 @@
+// Modified for v3.0 Document Alignment
 package middleware
 
 import (
@@ -11,86 +12,57 @@ import (
 	"github.com/atheer-payment/atheer-platform/pkg/response"
 )
 
-// LimitsChecker is Layer 8 of the transaction pipeline
-// Checks amount against min(LimitsMatrix, AdapterLimits) per SRS FR-LIMIT
 type LimitsChecker struct {
 	limitsRepo *repository.LimitsMatrixRepository
 	txRepo     *repository.TransactionRepository
+	recordRepo *repository.SwitchRecordRepository
 }
 
-func NewLimitsChecker(limitsRepo *repository.LimitsMatrixRepository, txRepo *repository.TransactionRepository) *LimitsChecker {
-	return &LimitsChecker{limitsRepo: limitsRepo, txRepo: txRepo}
+func NewLimitsChecker(limitsRepo *repository.LimitsMatrixRepository, txRepo *repository.TransactionRepository, recordRepo *repository.SwitchRecordRepository) *LimitsChecker {
+	return &LimitsChecker{limitsRepo: limitsRepo, txRepo: txRepo, recordRepo: recordRepo}
 }
 
 func (lc *LimitsChecker) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := GetCombinedRequest(r.Context())
-		if req == nil {
+		packet := GetPayerPacket(r.Context())
+		if packet == nil {
 			response.BadRequest(w, response.ErrInternalError, "Request not parsed")
 			return
 		}
 
-		sideA := &req.SideA
+		amount := decimal.NewFromInt(packet.Amount)
 
-		// Determine amount
-		var amount decimal.Decimal
-		if sideA.Amount != nil {
-			amount = decimal.NewFromFloat(*sideA.Amount)
-		} else {
-			// No amount — skip limits check (e.g., inquiry)
-			next.ServeHTTP(w, r)
+		payerRecord, err := lc.recordRepo.GetByPublicID(r.Context(), packet.PublicID)
+		if err != nil || payerRecord == nil {
+			response.Forbidden(w, "ERR_UNKNOWN_WALLET", "Payer not found")
 			return
 		}
 
-		// 1. Get matrix limits
+		// Use a basic P2P transaction type for limits check default
 		matrixLimits, err := lc.limitsRepo.GetLimits(r.Context(),
-			sideA.WalletID, sideA.OperationType, sideA.Currency, "basic")
+			payerRecord.WalletID, "P2P", "SAR", "basic")
 		if err != nil {
-			slog.Warn("No limits found, using default",
-				"walletId", sideA.WalletID,
-				"opType", sideA.OperationType,
-				"currency", sideA.Currency,
-			)
-			// Use very high default if no limits configured
 			matrixLimits = &model.LimitsMatrix{
 				MaxTxAmount: decimal.NewFromInt(999999999),
 				MaxDaily:    decimal.NewFromInt(999999999),
 			}
 		}
 
-		// 2. Check per-transaction limit
 		if amount.GreaterThan(matrixLimits.MaxTxAmount) {
-			slog.Warn("Amount exceeds per-tx limit",
-				"amount", amount, "limit", matrixLimits.MaxTxAmount)
-			response.BadRequest(w, response.ErrAmountExceedsLimit,
-				"Amount exceeds per-transaction limit")
+			response.BadRequest(w, "ERR_SPEND_LIMIT", "Amount exceeds per-transaction limit")
 			return
 		}
 
-		// 3. Check daily limit
-		dailyTotal, err := lc.txRepo.GetDailyTotalByDevice(r.Context(), sideA.DeviceID)
+		dailyTotal, err := lc.txRepo.GetDailyTotalByDevice(r.Context(), packet.PublicID)
 		if err != nil {
 			slog.Error("Failed to get daily total", "error", err)
 		} else {
 			if dailyTotal.Add(amount).GreaterThan(matrixLimits.MaxDaily) {
-				slog.Warn("Amount exceeds daily limit",
-					"dailyTotal", dailyTotal,
-					"amount", amount,
-					"limit", matrixLimits.MaxDaily)
-				response.BadRequest(w, response.ErrAmountExceedsLimit,
-					"Amount exceeds daily limit")
+				response.BadRequest(w, "ERR_SPEND_LIMIT", "Amount exceeds daily limit")
 				return
 			}
 		}
 
-		// TODO Phase 4: Also query adapter.GetLimits() and use min(matrix, adapter)
-
-		slog.Debug("Limits check passed",
-			"amount", amount,
-			"maxTx", matrixLimits.MaxTxAmount,
-			"dailyTotal", dailyTotal,
-			"maxDaily", matrixLimits.MaxDaily,
-		)
 		next.ServeHTTP(w, r)
 	})
 }

@@ -130,6 +130,19 @@ func InternalError(w http.ResponseWriter, message string) {
 	Err(w, http.StatusInternalServerError, ErrInternalError, message)
 }
 
+// ServiceUnavailable sends a 503 error (fail-closed security)
+func ServiceUnavailable(w http.ResponseWriter, code string, message string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(APIResponse{
+		Success: false,
+		Error: &APIError{
+			Code:    code,
+			Message: message,
+		},
+	})
+}
+
 // GetDescription returns the description for an error code
 func GetDescription(code ErrorCode) string {
 	if desc, ok := errorDescriptions[code]; ok {

@@ -1,157 +1,89 @@
+// Modified for v3.0 Document Alignment
+// SignatureVerifierA — التحقق من HMAC حسب القسم 4
+// تم حذف SignatureVerifierB — Side B يُوثّق عبر mTLS لا HMAC
 package middleware
 
 import (
-	"context"
-	"encoding/base64"
-	"log/slog"
-	"net/http"
+    "encoding/base64"
+    "log/slog"
+    "net/http"
 
-	"github.com/atheer-payment/atheer-platform/internal/repository"
-	"github.com/atheer-payment/atheer-platform/pkg/crypto"
-	"github.com/atheer-payment/atheer-platform/pkg/response"
+    "github.com/atheer-payment/atheer-platform/internal/repository"
+    "github.com/atheer-payment/atheer-platform/pkg/crypto"
+    "github.com/atheer-payment/atheer-platform/pkg/response"
 )
 
-// SignatureVerifierA is Layer 5 of the transaction pipeline
-// Verifies Side A's HMAC-SHA256 signature using deviceSeed + counter
-// Must match SDK's SignatureUtils.sign(luk, payloadHash) exactly
+// SignatureVerifierA verifies Side A's HMAC signature
+// Uses new v3.0 formula: LUK = HMAC-SHA256(Seed, Counter), Token = HMAC-SHA256(LUK, Amount||ReceiverID||PayeeType||WalletID||Counter)
 type SignatureVerifierA struct {
-	deviceRepo *repository.DeviceRepository
+    recordRepo *repository.SwitchRecordRepository
 }
 
-func NewSignatureVerifierA(deviceRepo *repository.DeviceRepository) *SignatureVerifierA {
-	return &SignatureVerifierA{deviceRepo: deviceRepo}
+func NewSignatureVerifierA(recordRepo *repository.SwitchRecordRepository) *SignatureVerifierA {
+    return &SignatureVerifierA{recordRepo: recordRepo}
 }
 
 func (sv *SignatureVerifierA) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := GetCombinedRequest(r.Context())
-		if req == nil {
-			response.BadRequest(w, response.ErrInternalError, "Request not parsed")
-			return
-		}
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        packet := GetPayerPacket(r.Context())
+        if packet == nil {
+            response.BadRequest(w, response.ErrInternalError, "Packet not parsed")
+            return
+        }
 
-		sideA := &req.SideA
+        // 1. Get payer SwitchRecord by PublicID
+        payerRecord, err := sv.recordRepo.GetByPublicID(r.Context(), packet.PublicID)
+        if err != nil || payerRecord == nil {
+            response.Forbidden(w, "ERR_HMAC_MISMATCH", "Payer not found in switch")
+            return
+        }
 
-		// 1. Get device from DB (may already be in context from attestation layer)
-		device := GetDeviceA(r.Context())
-		if device == nil {
-			var err error
-			device, err = sv.deviceRepo.GetByDeviceID(r.Context(), sideA.DeviceID)
-			if err != nil {
-				response.Forbidden(w, response.ErrDeviceNotRegistered, "Device not found")
-				return
-			}
-			r = r.WithContext(SetDeviceA(r.Context(), device))
-		}
+        // 2. Verify payer is active
+        if payerRecord.Status != "ACTIVE" {
+            response.Forbidden(w, "ERR_HMAC_MISMATCH", "Payer account is "+payerRecord.Status)
+            return
+        }
 
-		// 2. Verify device is active
-		if !device.IsActive() {
-			response.Forbidden(w, response.ErrDeviceNotRegistered, "Device is "+string(device.Status))
-			return
-		}
+        // 3. Decode HMAC bytes
+        hmacBytes := packet.HMAC
+        if len(hmacBytes) == 0 {
+            response.BadRequest(w, "ERR_HMAC_MISMATCH", "HMAC is empty")
+            return
+        }
 
-		// 3. Decrypt device seed (TODO: use KMS in production)
-		deviceSeed := device.DeviceSeed
+        // If HMAC is base64-encoded string in JSON, try to decode
+        if decoded, err := base64.StdEncoding.DecodeString(string(hmacBytes)); err == nil && len(decoded) > 0 {
+            hmacBytes = decoded
+        }
 
-		// 4. Decode the signature from base64
-		sigBytes, err := base64.StdEncoding.DecodeString(sideA.Signature)
-		if err != nil {
-			response.BadRequest(w, response.ErrInvalidSignature, "Invalid signature encoding")
-			return
-		}
+        // 4. Verify HMAC using new v3.0 formula
+        // WalletID comes from SwitchRecord (NOT from the packet — security requirement)
+        err = crypto.VerifyTransactionHMAC(
+            payerRecord.Seed,
+            packet.Amount,
+            packet.ReceiverID,
+            string(packet.PayeeType),
+            payerRecord.WalletID, // من السجل — ليس من الحزمة
+            packet.Counter,
+            hmacBytes,
+        )
+        if err != nil {
+            slog.Warn("HMAC signature verification failed",
+                "publicId", packet.PublicID,
+                "counter", packet.Counter,
+                "error", err,
+            )
+            response.Forbidden(w, "ERR_HMAC_MISMATCH", "HMAC signature invalid")
+            return
+        }
 
-		// 5. Verify HMAC signature
-		// ⚠️ CRITICAL: Field order MUST match SDK's SignatureUtils.buildPayloadString()
-		err = crypto.VerifyHMACSignature(
-			deviceSeed, sideA.Ctr,
-			sideA.WalletID, sideA.DeviceID,
-			sideA.OperationType, sideA.Currency,
-			sideA.Amount, sideA.Nonce, sideA.Timestamp,
-			sigBytes,
-		)
-		if err != nil {
-			slog.Warn("Side A HMAC signature verification failed",
-				"device_id", sideA.DeviceID,
-				"ctr", sideA.Ctr,
-				"error", err,
-			)
-			response.Forbidden(w, response.ErrInvalidSignature, "Side A signature invalid")
-			return
-		}
+        slog.Debug("HMAC signature verified",
+            "publicId", packet.PublicID,
+            "counter", packet.Counter,
+        )
 
-		slog.Debug("Side A signature verified",
-			"device_id", sideA.DeviceID,
-			"ctr", sideA.Ctr,
-		)
-		next.ServeHTTP(w, r)
-	})
-}
-
-// SignatureVerifierB is Layer 6 of the transaction pipeline
-// Verifies Side B's HMAC-SHA256 signature
-type SignatureVerifierB struct {
-	deviceRepo *repository.DeviceRepository
-}
-
-func NewSignatureVerifierB(deviceRepo *repository.DeviceRepository) *SignatureVerifierB {
-	return &SignatureVerifierB{deviceRepo: deviceRepo}
-}
-
-func (sv *SignatureVerifierB) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := GetCombinedRequest(r.Context())
-		if req == nil {
-			response.BadRequest(w, response.ErrInternalError, "Request not parsed")
-			return
-		}
-
-		sideB := &req.SideB
-
-		// 1. Get Side B device
-		deviceB, err := sv.deviceRepo.GetByDeviceID(r.Context(), sideB.DeviceID)
-		if err != nil {
-			response.Forbidden(w, response.ErrDeviceNotRegistered, "Side B device not found")
-			return
-		}
-
-		if !deviceB.IsActive() {
-			response.Forbidden(w, response.ErrDeviceNotRegistered, "Side B device is "+string(deviceB.Status))
-			return
-		}
-
-		// Store device B in context
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, deviceBKey, deviceB)
-
-		// 2. Decode signature
-		sigBytes, err := base64.StdEncoding.DecodeString(sideB.Signature)
-		if err != nil {
-			response.BadRequest(w, response.ErrInvalidSignature, "Invalid Side B signature encoding")
-			return
-		}
-
-		// 3. Derive LUK for Side B (Side B doesn't send ctr, use device's current ctr)
-		deviceSeed := deviceB.DeviceSeed
-		luk := crypto.DeriveLUK(deviceSeed, deviceB.Ctr)
-
-		// 4. Build Side B payload hash
-		payloadHash := crypto.BuildSideBPayloadHash(
-			sideB.WalletID, sideB.DeviceID, sideB.MerchantID,
-			sideB.OperationType, sideB.Currency,
-			sideB.Amount, sideB.AccountID, sideB.Timestamp,
-		)
-
-		// 5. Verify
-		expectedSig := crypto.SignPayload(luk, payloadHash)
-		if !crypto.TimingSafeEqual(expectedSig, sigBytes) {
-			slog.Warn("Side B HMAC signature verification failed",
-				"device_id", sideB.DeviceID,
-			)
-			response.Forbidden(w, response.ErrInvalidSignature, "Side B signature invalid")
-			return
-		}
-
-		slog.Debug("Side B signature verified", "device_id", sideB.DeviceID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+        // Store payer record in context
+        ctx := SetPayerRecord(r.Context(), payerRecord)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
 }

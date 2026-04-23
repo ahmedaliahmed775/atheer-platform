@@ -1,3 +1,4 @@
+// Modified for v3.0 Document Alignment
 package router
 
 import (
@@ -18,16 +19,17 @@ type Dependencies struct {
 	DisputeHandler     *handler.DisputeHandler
 	LimitsHandler      *handler.LimitsHandler
 
-	// Pipeline middleware (Layers 1-9)
-	RateLimiter         *middleware.RateLimiter
-	RequestLogger       *middleware.RequestLogger
-	AntiReplay          *middleware.AntiReplay
-	AttestationVerifier *middleware.AttestationVerifier
-	SigVerifierA        *middleware.SignatureVerifierA
-	SigVerifierB        *middleware.SignatureVerifierB
-	CrossValidator      *middleware.CrossValidator
-	LimitsChecker       *middleware.LimitsChecker
-	Idempotency         *middleware.Idempotency
+	// Pipeline middleware — v3.0 Document Alignment
+	RateLimiter       *middleware.RateLimiter
+	RequestLogger     *middleware.RequestLogger
+	AntiReplay        *middleware.AntiReplay
+	LimitsChecker     *middleware.LimitsChecker
+	SigVerifierA      *middleware.SignatureVerifierA
+	PayeeTypeVerifier *middleware.PayeeTypeVerifier
+	TxTypeResolver    *middleware.TransactionTypeResolver
+
+	// Security
+	AllowDevCORS bool // Allow localhost CORS in development
 }
 
 // New creates and configures the Chi router with all routes
@@ -39,11 +41,20 @@ func New(deps *Dependencies) chi.Router {
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Compress(5))
+	// CORS — restricted to Dashboard origins only (security hardening)
+	allowedOrigins := []string{
+		"https://dashboard.atheer.io",
+		"https://admin.atheer.io",
+	}
+	// Allow localhost in development
+	if deps.AllowDevCORS {
+		allowedOrigins = append(allowedOrigins, "http://localhost:3000", "http://localhost:3001")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Channel", "X-Device-ID", "X-Wallet-ID"},
-		ExposedHeaders:   []string{"X-Request-ID", "X-Idempotent"},
+		ExposedHeaders:   []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -57,28 +68,17 @@ func New(deps *Dependencies) chi.Router {
 		r.Post("/enroll", deps.EnrollHandler.Enroll)
 
 		// === Transaction Pipeline ===
-		// Layers execute in order: 1→2→3→4→5→6→7→8→9→Handler
+		// v3.0 Pipeline: Rate → Log → AntiReplay → Limits → HMAC → PayeeType → TxType → Handler
 		r.Route("/transaction", func(r chi.Router) {
-			// Layer 1: Rate Limiter
-			r.Use(deps.RateLimiter.Middleware)
-			// Layer 2: Request Logger
-			r.Use(deps.RequestLogger.Middleware)
-			// Layer 3: Anti-Replay (parses body, stores in context)
-			r.Use(deps.AntiReplay.Middleware)
-			// Layer 4: Attestation Verifier (ECDSA from TEE)
-			r.Use(deps.AttestationVerifier.Middleware)
-			// Layer 5: Signature Verifier A (HMAC)
-			r.Use(deps.SigVerifierA.Middleware)
-			// Layer 6: Signature Verifier B (HMAC)
-			r.Use(deps.SigVerifierB.Middleware)
-			// Layer 7: Cross-Validator
-			r.Use(deps.CrossValidator.Middleware)
-			// Layer 8: Limits Checker
-			r.Use(deps.LimitsChecker.Middleware)
-			// Layer 9: Idempotency
-			r.Use(deps.Idempotency.Middleware)
+			r.Use(deps.RateLimiter.Middleware)        // حماية عامة
+			r.Use(deps.RequestLogger.Middleware)       // تدقيق
+			r.Use(deps.AntiReplay.Middleware)          // counter check
+			r.Use(deps.LimitsChecker.Middleware)       // قيود الإنفاق — البند 1
+			r.Use(deps.SigVerifierA.Middleware)        // التحقق من HMAC — البند 3
+			r.Use(deps.PayeeTypeVerifier.Middleware)   // التحقق من PayeeType — البند 4 [جديد]
+			r.Use(deps.TxTypeResolver.Middleware)      // تحديد TransactionType — البند 5 [جديد]
 
-			// Layer 10: Transaction Handler (Router → Adapter → Saga)
+			// Handler (Router → Adapter → Saga)
 			r.Post("/", deps.TransactionHandler.Process)
 		})
 
