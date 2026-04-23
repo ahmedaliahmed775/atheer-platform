@@ -66,7 +66,9 @@ func (ar *AntiReplay) Middleware(next http.Handler) http.Handler {
 		).Int()
 
 		if err != nil {
-			slog.Error("Anti-replay Redis error, allowing request", "error", err)
+			slog.Error("Anti-replay Redis error — REJECTING request (fail-closed)", "error", err)
+			response.ServiceUnavailable(w, "ERR_ANTI_REPLAY", "Security service unavailable — retry later")
+			return
 		} else if result == 0 {
 			slog.Warn("Replay attack detected", "public_id", publicID, "ctr", newCtr)
 			response.BadRequest(w, response.ErrInternalError, fmt.Sprintf("Counter %d rejected", newCtr))

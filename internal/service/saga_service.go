@@ -72,14 +72,24 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 	)
 
 	// Determine which adapter to use for each side
-	adapterA, ok := s.adapterRegistry.GetAdapter(req.SideAWalletID)
+	adapterABase, ok := s.adapterRegistry.GetAdapter(req.SideAWalletID)
 	if !ok {
 		return s.failTx(ctx, req.TxID, "E009", "No adapter for wallet: "+req.SideAWalletID)
 	}
 
-	adapterB, ok := s.adapterRegistry.GetAdapter(req.SideBWalletID)
+	adapterBBase, ok := s.adapterRegistry.GetAdapter(req.SideBWalletID)
 	if !ok {
 		return s.failTx(ctx, req.TxID, "E009", "No adapter for wallet: "+req.SideBWalletID)
+	}
+
+	// Assert SagaExecutor capability (internal interface — not in document)
+	adapterA, ok := adapterABase.(adapter.SagaExecutor)
+	if !ok {
+		return s.failTx(ctx, req.TxID, "E009", "Adapter does not support Saga: "+req.SideAWalletID)
+	}
+	adapterB, ok := adapterBBase.(adapter.SagaExecutor)
+	if !ok {
+		return s.failTx(ctx, req.TxID, "E009", "Adapter does not support Saga: "+req.SideBWalletID)
 	}
 
 	// ─── Step 1: DEBIT Side A ───
@@ -87,7 +97,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 		ID:        uuid.New(),
 		TxID:      req.TxID,
 		OpType:    model.PendingOpDebit,
-		AdapterID: adapterA.WalletID(),
+		AdapterID: adapterABase.WalletID(),
 		WalletID:  req.SideAWalletID,
 		AccountID: req.SideAAccountID,
 		Amount:    req.Amount,
@@ -113,7 +123,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 		ID:        uuid.New(),
 		TxID:      req.TxID,
 		OpType:    model.PendingOpCredit,
-		AdapterID: adapterB.WalletID(),
+		AdapterID: adapterBBase.WalletID(),
 		WalletID:  req.SideBWalletID,
 		AccountID: req.SideBAccountID,
 		Amount:    req.Amount,
@@ -137,7 +147,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 			ID:        uuid.New(),
 			TxID:      req.TxID,
 			OpType:    model.PendingOpReversal,
-			AdapterID: adapterA.WalletID(),
+			AdapterID: adapterABase.WalletID(),
 			WalletID:  req.SideAWalletID,
 			AccountID: req.SideAAccountID,
 			Amount:    req.Amount,

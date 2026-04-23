@@ -27,6 +27,9 @@ type Dependencies struct {
 	SigVerifierA      *middleware.SignatureVerifierA
 	PayeeTypeVerifier *middleware.PayeeTypeVerifier
 	TxTypeResolver    *middleware.TransactionTypeResolver
+
+	// Security
+	AllowDevCORS bool // Allow localhost CORS in development
 }
 
 // New creates and configures the Chi router with all routes
@@ -38,8 +41,17 @@ func New(deps *Dependencies) chi.Router {
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Compress(5))
+	// CORS — restricted to Dashboard origins only (security hardening)
+	allowedOrigins := []string{
+		"https://dashboard.atheer.io",
+		"https://admin.atheer.io",
+	}
+	// Allow localhost in development
+	if deps.AllowDevCORS {
+		allowedOrigins = append(allowedOrigins, "http://localhost:3000", "http://localhost:3001")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Channel", "X-Device-ID", "X-Wallet-ID"},
 		ExposedHeaders:   []string{"X-Request-ID"},
