@@ -26,13 +26,13 @@ func (r *LimitsMatrixRepository) GetLimits(ctx context.Context, walletID, opType
 	}
 	lm := &model.LimitsMatrix{}
 	err := r.db.QueryRow(ctx, `
-		SELECT id, wallet_id, operation_type, currency, max_tx_amount,
+		SELECT id, wallet_id, transaction_type, currency, max_tx_amount,
 		       max_daily, max_monthly, tier, is_active, updated_at
 		FROM limits_matrix
-		WHERE wallet_id = $1 AND operation_type = $2 AND currency = $3 AND tier = $4 AND is_active = true`,
+		WHERE wallet_id = $1 AND transaction_type = $2 AND currency = $3 AND tier = $4 AND is_active = true`,
 		walletID, opType, currency, tier,
 	).Scan(
-		&lm.ID, &lm.WalletID, &lm.OperationType, &lm.Currency,
+		&lm.ID, &lm.WalletID, &lm.TransactionType, &lm.Currency,
 		&lm.MaxTxAmount, &lm.MaxDaily, &lm.MaxMonthly,
 		&lm.Tier, &lm.IsActive, &lm.UpdatedAt,
 	)
@@ -45,10 +45,10 @@ func (r *LimitsMatrixRepository) GetLimits(ctx context.Context, walletID, opType
 // ListAll returns all active limits (for dashboard)
 func (r *LimitsMatrixRepository) ListAll(ctx context.Context) ([]*model.LimitsMatrix, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, wallet_id, operation_type, currency, max_tx_amount,
+		SELECT id, wallet_id, transaction_type, currency, max_tx_amount,
 		       max_daily, max_monthly, tier, is_active, updated_at
 		FROM limits_matrix WHERE is_active = true
-		ORDER BY wallet_id, operation_type`)
+		ORDER BY wallet_id, transaction_type`)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (r *LimitsMatrixRepository) ListAll(ctx context.Context) ([]*model.LimitsMa
 	for rows.Next() {
 		lm := &model.LimitsMatrix{}
 		if err := rows.Scan(
-			&lm.ID, &lm.WalletID, &lm.OperationType, &lm.Currency,
+			&lm.ID, &lm.WalletID, &lm.TransactionType, &lm.Currency,
 			&lm.MaxTxAmount, &lm.MaxDaily, &lm.MaxMonthly,
 			&lm.Tier, &lm.IsActive, &lm.UpdatedAt,
 		); err != nil {
@@ -72,11 +72,11 @@ func (r *LimitsMatrixRepository) ListAll(ctx context.Context) ([]*model.LimitsMa
 // Upsert creates or updates a limits entry
 func (r *LimitsMatrixRepository) Upsert(ctx context.Context, lm *model.LimitsMatrix) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO limits_matrix (wallet_id, operation_type, currency, max_tx_amount, max_daily, max_monthly, tier)
+		INSERT INTO limits_matrix (wallet_id, transaction_type, currency, max_tx_amount, max_daily, max_monthly, tier)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (wallet_id, operation_type, currency, tier)
+		ON CONFLICT (wallet_id, transaction_type, currency, tier)
 		DO UPDATE SET max_tx_amount = $4, max_daily = $5, max_monthly = $6, updated_at = NOW()`,
-		lm.WalletID, lm.OperationType, lm.Currency,
+		lm.WalletID, lm.TransactionType, lm.Currency,
 		lm.MaxTxAmount, lm.MaxDaily, lm.MaxMonthly, lm.Tier,
 	)
 	return err

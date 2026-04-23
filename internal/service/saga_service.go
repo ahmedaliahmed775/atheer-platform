@@ -48,10 +48,10 @@ type SagaRequest struct {
 	SideBAccountID string
 	SideBDeviceID  string
 	MerchantID     *string
-	OperationType  model.OperationType
+	TransactionType  model.TransactionType
 	Currency       string
 	Amount         decimal.Decimal
-	Channel        model.Channel
+	Channel        string
 	SideACtr       int64
 }
 
@@ -67,7 +67,7 @@ type SagaResult struct {
 func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResult, error) {
 	slog.Info("Saga started",
 		"txId", req.TxID,
-		"opType", req.OperationType,
+		"txType", req.TransactionType,
 		"amount", req.Amount,
 	)
 
@@ -87,7 +87,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 		ID:        uuid.New(),
 		TxID:      req.TxID,
 		OpType:    model.PendingOpDebit,
-		AdapterID: adapterA.ID(),
+		AdapterID: adapterA.WalletID(),
 		WalletID:  req.SideAWalletID,
 		AccountID: req.SideAAccountID,
 		Amount:    req.Amount,
@@ -113,7 +113,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 		ID:        uuid.New(),
 		TxID:      req.TxID,
 		OpType:    model.PendingOpCredit,
-		AdapterID: adapterB.ID(),
+		AdapterID: adapterB.WalletID(),
 		WalletID:  req.SideBWalletID,
 		AccountID: req.SideBAccountID,
 		Amount:    req.Amount,
@@ -137,7 +137,7 @@ func (s *SagaService) Execute(ctx context.Context, req *SagaRequest) (*SagaResul
 			ID:        uuid.New(),
 			TxID:      req.TxID,
 			OpType:    model.PendingOpReversal,
-			AdapterID: adapterA.ID(),
+			AdapterID: adapterA.WalletID(),
 			WalletID:  req.SideAWalletID,
 			AccountID: req.SideAAccountID,
 			Amount:    req.Amount,

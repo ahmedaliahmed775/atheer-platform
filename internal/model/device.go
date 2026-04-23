@@ -1,3 +1,4 @@
+// DEPRECATED: Use SwitchRecord instead. Will be removed after repository migration.
 package model
 
 import (

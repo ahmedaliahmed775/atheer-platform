@@ -8,7 +8,6 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 
 	"github.com/atheer-payment/atheer-platform/internal/model"
 	"github.com/atheer-payment/atheer-platform/internal/repository"
@@ -130,35 +129,24 @@ func NewTransactionService(
 	}
 }
 
-// ProcessTransaction processes a combined request from Side B
-// In Phase 3, the pipeline middleware handles validation before this is called
-func (s *TransactionService) ProcessTransaction(ctx context.Context, req *model.CombinedRequest, channel model.Channel) (*model.Transaction, error) {
+func (s *TransactionService) ProcessTransaction(ctx context.Context, req *model.PayerTlvPacket, channel string) (*model.Transaction, error) {
 	txID := uuid.New().String()
 
-	// Determine final amount
-	var amount float64
-	if req.SideB.Amount != nil {
-		amount = *req.SideB.Amount
-	} else if req.SideA.Amount != nil {
-		amount = *req.SideA.Amount
-	}
+	amount := float64(req.Amount)
 
 	tx := &model.Transaction{
-		TxID:           txID,
-		Nonce:          req.SideA.Nonce,
-		SideAWalletID:  req.SideA.WalletID,
-		SideADeviceID:  req.SideA.DeviceID,
-		SideAAccountID: "unknown", // Side A doesn't send accountId in payload
-		SideBWalletID:  req.SideB.WalletID,
-		SideBDeviceID:  req.SideB.DeviceID,
-		SideBAccountID: req.SideB.AccountID,
-		MerchantID:     req.SideB.MerchantID,
-		OperationType:  model.OperationType(req.SideA.OperationType),
-		Currency:       req.SideA.Currency,
-		Amount:         decimal.NewFromFloat(amount),
-		ChannelUsed:    channel,
-		Status:         model.TxStatusPending,
-		SideACtr:       req.SideA.Ctr,
+		TxID:            txID,
+		PayerPublicID:   req.PublicID,
+		PayerUserID:     "unknown", // To be fetched
+		PayerType:       model.UserTypePersonal,
+		PayeeID:         req.ReceiverID,
+		PayeeType:       req.PayeeType,
+		TransactionType: model.TxP2P, // Default
+		Amount:          req.Amount,
+		Currency:        "SAR",
+		WalletID:        "unknown",
+		Status:          model.TxStatusPending,
+		Counter:         req.Counter,
 	}
 
 	// Create transaction record
@@ -179,7 +167,6 @@ func (s *TransactionService) ProcessTransaction(ctx context.Context, req *model.
 
 	slog.Info("Transaction processed",
 		"txId", txID,
-		"nonce", req.SideA.Nonce,
 		"amount", amount,
 		"channel", channel,
 	)

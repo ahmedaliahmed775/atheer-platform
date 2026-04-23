@@ -103,7 +103,7 @@ func NewTransactionHandler(ts *service.TransactionService) *TransactionHandler {
 // Process handles POST /api/v2/transaction/
 // Called by SDK: SideBProcessor sends CombinedRequest after NFC tap
 func (h *TransactionHandler) Process(w http.ResponseWriter, r *http.Request) {
-	var req model.CombinedRequest
+	var req model.PayerTlvPacket
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, response.ErrInternalError, "Invalid request body")
 		return
@@ -115,11 +115,10 @@ func (h *TransactionHandler) Process(w http.ResponseWriter, r *http.Request) {
 		channel = "APN"
 	}
 
-	result, err := h.txService.ProcessTransaction(r.Context(), &req, model.Channel(channel))
+	result, err := h.txService.ProcessTransaction(r.Context(), &req, channel)
 	if err != nil {
 		slog.Error("Transaction processing failed",
 			"error", err,
-			"nonce", req.SideA.Nonce,
 		)
 		response.InternalError(w, "Transaction processing failed")
 		return

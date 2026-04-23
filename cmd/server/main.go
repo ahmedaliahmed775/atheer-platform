@@ -71,7 +71,9 @@ func main() {
 	disputeHandler := handler.NewDisputeHandler(disputeService)
 	limitsHandler := handler.NewLimitsHandler(limitsService)
 
-	// === Initialize Pipeline Middleware (Layers 1-9) ===
+	// === Initialize Pipeline Middleware (v3.0) ===
+	switchRecordRepo := repository.NewSwitchRecordRepository(db)
+
 	rateLimiter := middleware.NewRateLimiter(rdb,
 		cfg.Limits.RateLimitPerDevice,
 		cfg.Limits.RateLimitPerWallet,
@@ -79,12 +81,10 @@ func main() {
 	)
 	requestLogger := middleware.NewRequestLogger()
 	antiReplay := middleware.NewAntiReplay(rdb)
-	attestationVerifier := middleware.NewAttestationVerifier(deviceRepo)
-	sigVerifierA := middleware.NewSignatureVerifierA(deviceRepo)
-	sigVerifierB := middleware.NewSignatureVerifierB(deviceRepo)
-	crossValidator := middleware.NewCrossValidator(cfg.Security.TxTimeWindowMinutes)
-	limitsChecker := middleware.NewLimitsChecker(limitsRepo, txRepo)
-	idempotency := middleware.NewIdempotency(rdb, cfg.Security.IdempotencyTTLSeconds)
+	limitsChecker := middleware.NewLimitsChecker(limitsRepo, txRepo, switchRecordRepo)
+	sigVerifierA := middleware.NewSignatureVerifierA(switchRecordRepo)
+	payeeTypeVerifier := middleware.NewPayeeTypeVerifier(switchRecordRepo)
+	txTypeResolver := middleware.NewTransactionTypeResolver()
 
 	// === Setup Router with all dependencies ===
 	deps := &router.Dependencies{
@@ -95,15 +95,13 @@ func main() {
 		DisputeHandler:     disputeHandler,
 		LimitsHandler:      limitsHandler,
 
-		RateLimiter:         rateLimiter,
-		RequestLogger:       requestLogger,
-		AntiReplay:          antiReplay,
-		AttestationVerifier: attestationVerifier,
-		SigVerifierA:        sigVerifierA,
-		SigVerifierB:        sigVerifierB,
-		CrossValidator:      crossValidator,
-		LimitsChecker:       limitsChecker,
-		Idempotency:         idempotency,
+		RateLimiter:       rateLimiter,
+		RequestLogger:     requestLogger,
+		AntiReplay:        antiReplay,
+		LimitsChecker:     limitsChecker,
+		SigVerifierA:      sigVerifierA,
+		PayeeTypeVerifier: payeeTypeVerifier,
+		TxTypeResolver:    txTypeResolver,
 	}
 
 	r := router.New(deps)

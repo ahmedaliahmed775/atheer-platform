@@ -11,7 +11,7 @@ import (
 type LimitsMatrix struct {
 	ID            uuid.UUID       `json:"id"            db:"id"`
 	WalletID      string          `json:"walletId"      db:"wallet_id"`
-	OperationType OperationType   `json:"operationType" db:"operation_type"`
+	TransactionType TransactionType `json:"transactionType" db:"transaction_type"`
 	Currency      string          `json:"currency"      db:"currency"`
 	MaxTxAmount   decimal.Decimal `json:"maxTxAmount"   db:"max_tx_amount"`
 	MaxDaily      decimal.Decimal `json:"maxDaily"      db:"max_daily"`

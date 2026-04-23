@@ -43,7 +43,66 @@ func NewJEEPAdapter(cfg JEEPConfig) *JEEPAdapter {
 	}
 }
 
-func (a *JEEPAdapter) ID() string { return "JEEP" }
+func (a *JEEPAdapter) WalletID() string { return "JEEP" }
+
+func (a *JEEPAdapter) BuildRequest(dto model.TransactionDTO) (*WalletAPIRequest, error) {
+    body, _ := json.Marshal(map[string]interface{}{
+        "payerUserId":     dto.PayerUserID,
+        "payerType":       dto.PayerType,
+        "payeeId":         dto.PayeeID,
+        "payeeType":       dto.PayeeType,
+        "transactionType": dto.TransactionType,
+        "amount":          dto.Amount,
+        "currency":        dto.Currency,
+    })
+    return &WalletAPIRequest{
+        URL:    a.baseURL + "/api/v1/transaction",
+        Method: "POST",
+        Headers: map[string]string{
+            "Authorization": "Bearer " + a.apiKey,
+            "Content-Type":  "application/json",
+        },
+        Body: body,
+    }, nil
+}
+
+func (a *JEEPAdapter) ParseResponse(raw []byte) (*model.AtheerResult, error) {
+    var resp map[string]interface{}
+    json.Unmarshal(raw, &resp)
+    return &model.AtheerResult{
+        Success:       resp["success"] == true,
+        TransactionID: fmt.Sprintf("%v", resp["transactionId"]),
+    }, nil
+}
+
+func (a *JEEPAdapter) ExecuteTransaction(ctx context.Context, dto model.TransactionDTO) (*model.AtheerResult, error) {
+    // داخلياً: Debit → Credit → SMS (Saga مخفي)
+    debitResult, err := a.Debit(ctx, dto.WalletID, dto.PayerUserID,
+        decimal.NewFromInt(dto.Amount), fmt.Sprintf("TX-%d", dto.Timestamp))
+    if err != nil || !debitResult.Success {
+        return &model.AtheerResult{Success: false, ErrorCode: "ERR_BALANCE"}, err
+    }
+
+    creditResult, err := a.Credit(ctx, dto.WalletID, dto.PayeeID,
+        decimal.NewFromInt(dto.Amount), fmt.Sprintf("TX-%d", dto.Timestamp))
+    if err != nil || !creditResult.Success {
+        // Compensation — Reverse Debit
+        _ = a.ReverseDebit(ctx, dto.WalletID, dto.PayerUserID,
+            decimal.NewFromInt(dto.Amount), fmt.Sprintf("TX-%d", dto.Timestamp))
+        return &model.AtheerResult{Success: false, ErrorCode: "ERR_WALLET_DOWN"}, err
+    }
+
+    // SMS — best effort
+    go func() {
+        _ = a.SendSMS(ctx, dto.PayerUserID, fmt.Sprintf("تم خصم %d %s", dto.Amount, dto.Currency))
+        _ = a.SendSMS(ctx, dto.PayeeID, fmt.Sprintf("تم إيداع %d %s", dto.Amount, dto.Currency))
+    }()
+
+    return &model.AtheerResult{
+        Success:       true,
+        TransactionID: creditResult.TransactionID,
+    }, nil
+}
 
 func (a *JEEPAdapter) Debit(ctx context.Context, walletID, accountID string, amount decimal.Decimal, txID string) (*DebitResult, error) {
 	body := map[string]interface{}{
@@ -145,7 +204,7 @@ func (a *JEEPAdapter) SendSMS(ctx context.Context, phone, message string) error 
 	return err
 }
 
-func (a *JEEPAdapter) GetLimits(ctx context.Context, walletID, accountID string, opType model.OperationType) (*model.LimitsResult, error) {
+func (a *JEEPAdapter) GetLimits(ctx context.Context, walletID, accountID string, opType model.TransactionType) (*model.LimitsResult, error) {
 	resp, err := a.get(ctx, fmt.Sprintf("/api/v1/limits/%s/%s?opType=%s", walletID, accountID, opType))
 	if err != nil {
 		// Return high defaults if adapter limits unavailable
