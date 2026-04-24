@@ -1,8 +1,10 @@
 // Modified for v3.0 Document Alignment
 // حسب القسم 4 — الخطوة 5 — البند 4:
-// السويتش يتحقق من PayeeType: يجلب SwitchRecord الخاص بـ ReceiverID
-// يُقارن PayeeType (من الحزمة) بـ UserType (من السجل)
-// إذا تعارَضا → رفض فوري
+// السويتش يحدد UserType تلقائياً من SwitchRecord
+// لم يعد يعتمد على PayeeType من الحزمة — السويتش هو المصدر الوحيد للحقيقة
+//
+// هذا الـ middleware يتحقق أن المستقبل مسجل في السويتش
+// ويخزّن سجل المستقبل في context لاستخدامه في تحديد TransactionType
 package middleware
 
 import (
@@ -13,6 +15,8 @@ import (
     "github.com/atheer-payment/atheer-platform/pkg/response"
 )
 
+// PayeeTypeVerifier يتحقق من أن المستقبل مسجل في السويتش
+// ويخزّن سجل المستقبل في context لتحديد TransactionType لاحقاً
 type PayeeTypeVerifier struct {
     recordRepo *repository.SwitchRecordRepository
 }
@@ -30,26 +34,32 @@ func (v *PayeeTypeVerifier) Middleware(next http.Handler) http.Handler {
         }
 
         // جلب SwitchRecord الخاص بـ ReceiverID
+        // السويتش يحدد UserType من السجل — لا من الحزمة
         payeeRecord, err := v.recordRepo.GetByUserID(r.Context(), packet.ReceiverID)
         if err != nil || payeeRecord == nil {
-            slog.Warn("PayeeType verification: ReceiverID not found",
+            slog.Warn("Payee verification: ReceiverID not found",
                 "receiverId", packet.ReceiverID)
-            response.BadRequest(w, "ERR_PAYEE_TYPE_MISMATCH",
+            response.BadRequest(w, "ERR_PAYEE_NOT_FOUND",
                 "ReceiverID not registered in switch")
             return
         }
 
-        // مقارنة PayeeType من الحزمة مع UserType من السجل
-        if string(payeeRecord.UserType) != string(packet.PayeeType) {
-            slog.Warn("PayeeType mismatch",
-                "packet", packet.PayeeType,
-                "record", payeeRecord.UserType)
-            response.BadRequest(w, "ERR_PAYEE_TYPE_MISMATCH",
-                "PayeeType does not match switch record")
+        // التحقق من أن حساب المستقبل نشط
+        if payeeRecord.Status != "ACTIVE" {
+            slog.Warn("Payee account not active",
+                "receiverId", packet.ReceiverID,
+                "status", payeeRecord.Status)
+            response.BadRequest(w, "ERR_PAYEE_SUSPENDED",
+                "Receiver account is "+payeeRecord.Status)
             return
         }
 
-        // تخزين payeeRecord في context للاستخدام لاحقاً
+        slog.Debug("Payee verified from SwitchRecord",
+            "receiverId", packet.ReceiverID,
+            "payeeUserType", payeeRecord.UserType,
+        )
+
+        // تخزين payeeRecord في context لاستخدامه في TransactionTypeResolver
         ctx := SetPayeeRecord(r.Context(), payeeRecord)
         next.ServeHTTP(w, r.WithContext(ctx))
     })

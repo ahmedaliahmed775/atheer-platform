@@ -1,6 +1,11 @@
 // Modified for v3.0 Document Alignment
 // SignatureVerifierA — التحقق من HMAC حسب القسم 4
 // تم حذف SignatureVerifierB — Side B يُوثّق عبر mTLS لا HMAC
+//
+// v3.0 Security Fix:
+// - PayeeType تم حذفه من HMAC — السويتش يحدد UserType تلقائياً
+// - Currency أُضيف للحماية من هجمات تبديل العملة
+// - Seed يتم فك تشفيره عبر KMS قبل التحقق من HMAC
 package middleware
 
 import (
@@ -9,18 +14,23 @@ import (
     "net/http"
 
     "github.com/atheer-payment/atheer-platform/internal/repository"
+    "github.com/atheer-payment/atheer-platform/internal/service"
     "github.com/atheer-payment/atheer-platform/pkg/crypto"
     "github.com/atheer-payment/atheer-platform/pkg/response"
 )
 
 // SignatureVerifierA verifies Side A's HMAC signature
-// Uses new v3.0 formula: LUK = HMAC-SHA256(Seed, Counter), Token = HMAC-SHA256(LUK, Amount||ReceiverID||PayeeType||WalletID||Counter)
+// Uses v3.0 formula: LUK = HMAC-SHA256(Seed, Counter), Token = HMAC-SHA256(LUK, Amount||ReceiverID||Currency||WalletID||Counter)
 type SignatureVerifierA struct {
     recordRepo *repository.SwitchRecordRepository
+    kms        service.KMSProvider
 }
 
-func NewSignatureVerifierA(recordRepo *repository.SwitchRecordRepository) *SignatureVerifierA {
-    return &SignatureVerifierA{recordRepo: recordRepo}
+func NewSignatureVerifierA(recordRepo *repository.SwitchRecordRepository, kms service.KMSProvider) *SignatureVerifierA {
+    return &SignatureVerifierA{
+        recordRepo: recordRepo,
+        kms:        kms,
+    }
 }
 
 func (sv *SignatureVerifierA) Middleware(next http.Handler) http.Handler {
@@ -56,13 +66,26 @@ func (sv *SignatureVerifierA) Middleware(next http.Handler) http.Handler {
             hmacBytes = decoded
         }
 
-        // 4. Verify HMAC using new v3.0 formula
+        // 4. Decrypt Seed via KMS before HMAC verification
+        // Seed مشفّر في قاعدة البيانات — يجب فك التشفير قبل الاستخدام
+        decryptedSeed, err := sv.kms.Decrypt(payerRecord.Seed)
+        if err != nil {
+            slog.Error("Failed to decrypt seed via KMS — REJECTING (fail-closed)",
+                "publicId", packet.PublicID,
+                "error", err,
+            )
+            response.ServiceUnavailable(w, "ERR_KMS", "Security service unavailable — retry later")
+            return
+        }
+
+        // 5. Verify HMAC using v3.0 formula
         // WalletID comes from SwitchRecord (NOT from the packet — security requirement)
+        // Currency comes from the packet (part of HMAC to prevent currency swap attacks)
         err = crypto.VerifyTransactionHMAC(
-            payerRecord.Seed,
+            decryptedSeed,
             packet.Amount,
             packet.ReceiverID,
-            string(packet.PayeeType),
+            packet.Currency,
             payerRecord.WalletID, // من السجل — ليس من الحزمة
             packet.Counter,
             hmacBytes,

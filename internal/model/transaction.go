@@ -82,13 +82,15 @@ type TransactionDTO struct {
 
 // PayerTlvPacket — الحزمة المستلمة من الطرف A عبر الطرف B
 // حسب القسم 4 — الخطوة 4
+// PayeeType تم حذفه — السويتش يحدد UserType تلقائياً من SwitchRecord
+// Currency أُضيف لحماية هجمات تبديل العملة
 type PayerTlvPacket struct {
-    PublicID   string   `json:"publicId"`
-    Amount     int64    `json:"amount"`
-    ReceiverID string   `json:"receiverId"`
-    PayeeType  UserType `json:"payeeType"`
-    Counter    uint64   `json:"counter"`
-    HMAC       []byte   `json:"hmac"`
+    PublicID   string `json:"publicId"`
+    Amount     int64  `json:"amount"`
+    ReceiverID string `json:"receiverId"`
+    Currency   string `json:"currency"`
+    Counter    uint64 `json:"counter"`
+    HMAC       []byte `json:"hmac"`
 }
 
 // AtheerResult — النتيجة الموحدة من المحوّل
