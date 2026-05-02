@@ -1,0 +1,34 @@
+# إعدادات سويتش Atheer — يُرجى نسخ هذا الملف إلى config.yaml وتعديل القيم
+# المتغيرات بين ${} تُستبدل من متغيرات البيئة
+
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+
+database:
+  host: localhost
+  port: 5432
+  name: atheer
+  user: atheer
+  password: ${DB_PASSWORD}
+  max_conns: 20
+
+security:
+  timestamp_tolerance: 60
+  look_ahead_window: 10
+  default_payer_limit: 5000
+  daily_limit: 50000
+  monthly_limit: 500000
+  jwt_secret: ${JWT_SECRET}
+  jwt_expiry: 8h
+
+kms:
+  provider: local
+  master_key: ${KMS_MASTER_KEY}
+
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
