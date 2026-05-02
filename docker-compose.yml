@@ -44,8 +44,10 @@ services:
       - ATHEER_DB_NAME=${POSTGRES_DB:-atheer}
       - ATHEER_DB_USER=${POSTGRES_USER:-atheer}
       - ATHEER_DB_PASSWORD=${POSTGRES_PASSWORD:-atheer_secret}
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      - KMS_MASTER_KEY=${KMS_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
     volumes:
-      - ./switch/config.example.yaml:/app/config.yaml:ro
+      - ./switch/config.yaml:/app/config.yaml:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
@@ -53,7 +55,7 @@ services:
       retries: 3
       start_period: 15s
 
-  # ── داشبورد Atheer (Next.js + Nginx) ──
+  # ── داشبورد Atheer (Next.js) ──
   atheer-dashboard:
     build:
       context: ./dashboard

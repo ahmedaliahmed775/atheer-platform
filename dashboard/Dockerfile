@@ -5,7 +5,7 @@ WORKDIR /app
 
 # نسخ ملفات التبعيات أولاً للاستفادة من طبقات Docker المؤقتة
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --legacy-peer-deps
 
 # نسخ الكود المصدري
 COPY . .
@@ -14,51 +14,35 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ── المرحلة الثانية: صورة التشغيل (nginx) ──
-FROM nginx:1.25-alpine
+# ── المرحلة الثانية: صورة التشغيل (Node.js runtime) ──
+# نستخدم next start بدلاً من nginx لأن التطبيق يحتاج:
+# - middleware.ts لحماية المسارات (JWT)
+# - next.config.mjs rewrites لتوجيه طلبات API
+FROM node:20-alpine AS runner
 
-# نسخ إعدادات nginx المُخصّصة
-RUN rm /etc/nginx/conf.d/default.conf
-COPY <<'EOF' /etc/nginx/conf.d/atheer-dashboard.conf
-server {
-    listen 3000;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
+WORKDIR /app
 
-    # ضغط gzip
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml;
-    gzip_min_length 256;
+# إنشاء مستخدم غير جذر للأمان
+RUN addgroup -S atheer && adduser -S atheer -G atheer
 
-    # تخزين مؤقت للأصول الثابتة
-    location /_next/static/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
+# تعيين متغيرات البيئة
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-    # توجيه كل المسارات إلى Next.js
-    location / {
-        try_files $uri $uri.html $uri/index.html /index.html;
-    }
+# نسخ الملفات اللازمة من مرحلة البناء
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
-    # فحص الصحة
-    location /nginx-health {
-        access_log off;
-        return 200 "ok";
-        add_header Content-Type text/plain;
-    }
-}
-EOF
-
-# نسخ ملفات البناء من المرحلة الأولى
-COPY --from=builder /app/out /usr/share/nginx/html
+# استخدام المستخدم غير الجذر
+USER atheer
 
 # المنفذ
 EXPOSE 3000
 
 # فحص الصحة
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:3000/nginx-health || exit 1
+    CMD wget -qO- http://localhost:3000/ || exit 1
 
-CMD ["nginx", "-g", "daemon off;"]
+# تشغيل خادم Next.js
+CMD ["node", "server.js"]

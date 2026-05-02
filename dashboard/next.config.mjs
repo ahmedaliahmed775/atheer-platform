@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // بناء مستقل لـ Docker — يُنتج مجلد standalone يحتوي كل التبعيات
+  output: 'standalone',
+
   // عنوان API الخلفي — سويتش Atheer
   async rewrites() {
     return [
