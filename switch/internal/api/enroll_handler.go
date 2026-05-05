@@ -135,9 +135,9 @@ func (h *EnrollHandler) Handle(w http.ResponseWriter, r *http.Request) {
         // 10. إرجاع الاستجابة
         // 6b. تشفير البذرة بمفتاح TEE العام للعميل
         // حسب الوثيقة: البذرة تُشفّر بمفتاح TEE العام ولا تمر بصيغة مقروءة خارج TEE
-        // TODO: حالياً مبسّط — يُستبدل بتشفير RSA/EC حقيقي بمفتاح req.PublicKey
-        encryptedSeedForDevice := base64.StdEncoding.EncodeToString(seedEncrypted)
-
+        // DEV: حالياً نُرسل البذرة الخام (Base64) — تُخزّن في EncryptedSharedPreferences على الجهاز
+        // PROD: يجب استبدال هذا بتشفير RSA-OAEP أو ECIES بمفتاح req.PublicKey
+        encryptedSeedForDevice := base64.StdEncoding.EncodeToString(seed)
         resp := model.EnrollResponse{
                 PublicId:         publicId,
                 EncryptedSeed:    encryptedSeedForDevice,
