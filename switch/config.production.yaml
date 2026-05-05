@@ -1,0 +1,49 @@
+# ════════════════════════════════════════════════════
+# إعدادات سويتش Atheer — الإنتاج (DigitalOcean)
+# المتغيرات بين ${} تُستبدل من متغيرات البيئة
+# ════════════════════════════════════════════════════
+
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+
+# نقطة وصول شبكة الاتصالات
+carrier:
+  enabled: true
+  port: 8081
+  commission_rate: 5
+
+database:
+  host: ${DB_HOST}
+  port: ${DB_PORT:-5432}
+  name: ${DB_NAME:-atheer}
+  user: ${DB_USER:-atheer}
+  password: ${DB_PASSWORD}
+  ssl_mode: ${DB_SSL_MODE:-require}  # require للإنتاج
+  max_conns: 25
+
+# إعدادات CORS — نطاقات الإنتاج
+cors:
+  allowed_origins:
+    - https://${DOMAIN}
+    - https://www.${DOMAIN}
+
+security:
+  timestamp_tolerance: 60
+  look_ahead_window: 10
+  default_payer_limit: 5000
+  daily_limit: 50000
+  monthly_limit: 500000
+  jwt_secret: ${JWT_SECRET}
+  jwt_expiry: 8h
+
+kms:
+  provider: local
+  master_key: ${KMS_MASTER_KEY}
+
+notifications:
+  telegram:
+    enabled: ${TELEGRAM_ENABLED:-false}
+    bot_token: ${TELEGRAM_BOT_TOKEN:-}
+    chat_id: ${TELEGRAM_CHAT_ID:-}

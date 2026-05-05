@@ -1,85 +1,43 @@
-# ════════════════════════════════════════
-# Atheer Platform — .gitignore
-# ════════════════════════════════════════
+# ════════════════════════════════════════════════════
+# Atheer Platform — ملفات مستثناة من Git
+# ════════════════════════════════════════════════════
 
-# ── أدوات AI / وكلاء ──
-/.roo
-/.windsurfrules
-/CLAUDE.md
-/_agents
-/.prompt_protocol
-.agent/
-.claude/
-.windsurf/
-.cursor/
-.gemini/
+# ── ملفات البيئة والأسرار ──
+.env
+.env.local
+.env.production
+*.env.local
+config.yaml
+switch/config.yaml
 
-# ── ملفات النظام ──
+# ─ـ الشهادات والمفاتيح ──
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# ── السجلات ──
+nginx/logs/*.log
+
+# ── Go ──
+switch/build/
+switch/*.exe
+switch/bin/
+
+# ── Node.js ──
+dashboard/node_modules/
+dashboard/.next/
+
+# ── قاعدة البيانات ──
+pgdata/
+
+# ── نظام التشغيل ──
 .DS_Store
 Thumbs.db
-Desktop.ini
 *.swp
 *.swo
 *~
-
-# ── بروتوكول التنفيذ (ملفات داخلية) ──
-execution_prompts.md
-ATHEER-SYSTEM-SPEC.md
 
 # ── IDE ──
 .idea/
 .vscode/
 *.iml
-*.code-workspace
-
-# ══════════════════════
-# Switch (Go)
-# ══════════════════════
-
-# ملفات البناء
-switch/atheer-switch
-switch/*.exe
-switch/bin/
-
-# ملف الإعدادات الحقيقي (يحتوي أسرار)
-switch/config.yaml
-
-# لا تتجاهل المثال:
-!switch/config.example.yaml
-
-# ══════════════════════
-# Dashboard (Next.js)
-# ══════════════════════
-
-# التبعيات
-dashboard/node_modules/
-
-# بناء Next.js
-dashboard/.next/
-dashboard/out/
-
-# متغيرات البيئة (أسرار)
-dashboard/.env
-dashboard/.env.local
-dashboard/.env.production
-dashboard/.env.development.local
-dashboard/.env.test.local
-dashboard/.env.production.local
-
-# ملفات تصحيح
-dashboard/npm-debug.log*
-dashboard/yarn-debug.log*
-dashboard/yarn-error.log*
-
-# ══════════════════════
-# Docker
-# ══════════════════════
-.env
-*.log
-
-# ══════════════════════
-# اختبارات / تغطية
-# ══════════════════════
-switch/coverage.out
-switch/coverage.html
-dashboard/coverage/

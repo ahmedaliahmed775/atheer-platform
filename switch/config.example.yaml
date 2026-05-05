@@ -19,7 +19,16 @@ database:
   name: atheer
   user: atheer
   password: ${DB_PASSWORD}
+  ssl_mode: ${DB_SSL_MODE:-disable}  # disable للتطوير، require للإنتاج (DigitalOcean)
   max_conns: 20
+
+# إعدادات CORS — النطاقات المسموحة للداشبورد
+cors:
+  allowed_origins:
+    - http://localhost:3000
+    - http://127.0.0.1:3000
+    # أضف نطاق الإنتاج هنا، مثلاً:
+    # - https://atheer.yourdomain.com
 
 security:
   timestamp_tolerance: 60

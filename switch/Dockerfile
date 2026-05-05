@@ -44,8 +44,8 @@ COPY config.example.yaml /app/config.yaml
 # استخدام المستخدم غير الجذر
 USER atheer
 
-# منفذ الخادم
-EXPOSE 8080
+# منفذ الخادم العام + منفذ شبكة الاتصالات
+EXPOSE 8080 8081
 
 # فحص الصحة
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

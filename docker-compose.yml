@@ -1,6 +1,6 @@
 # ════════════════════════════════════════════════════
-# Atheer Platform — Docker Compose
-# يُشغّل: PostgreSQL + Switch (Go) + Dashboard (Next.js)
+# Atheer Platform — Docker Compose للإنتاج
+# يُشغّل: Nginx + Switch (Go) + Dashboard (Next.js) + PostgreSQL
 # ════════════════════════════════════════════════════
 
 version: "3.9"
@@ -16,7 +16,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-atheer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atheer_secret}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # محلي فقط — لا وصول خارجي
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,6 +25,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - atheer-net
 
   # ── سويتش Atheer (Go) ──
   atheer-switch:
@@ -34,19 +36,18 @@ services:
     container_name: atheer-switch
     restart: unless-stopped
     ports:
-      - "8080:8080"
-      - "8081:8081"  # نقطة وصول شبكة الاتصالات (carrier)
+      - "127.0.0.1:8080:8080"  # عبر nginx فقط
+      - "8081:8081"            # نقطة وصول شبكة الاتصالات (carrier) — وصول مباشر
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      - ATHEER_DB_HOST=postgres
-      - ATHEER_DB_PORT=5432
-      - ATHEER_DB_NAME=${POSTGRES_DB:-atheer}
-      - ATHEER_DB_USER=${POSTGRES_USER:-atheer}
-      - ATHEER_DB_PASSWORD=${POSTGRES_PASSWORD:-atheer_secret}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-atheer_secret}
+      - DB_SSL_MODE=${DB_SSL_MODE:-disable}
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
       - KMS_MASTER_KEY=${KMS_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     volumes:
       - ./switch/config.yaml:/app/config.yaml:ro
     healthcheck:
@@ -55,6 +56,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    networks:
+      - atheer-net
 
   # ── داشبورد Atheer (Next.js) ──
   atheer-dashboard:
@@ -63,14 +66,49 @@ services:
       dockerfile: Dockerfile
     container_name: atheer-dashboard
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     depends_on:
       atheer-switch:
         condition: service_healthy
     environment:
       - NEXT_PUBLIC_API_URL=http://atheer-switch:8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - atheer-net
+
+  # ── Nginx — وكيل عكسي مع TLS ──
+  nginx:
+    image: nginx:alpine
+    container_name: atheer-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro        # شهادات TLS
+      - ./nginx/logs:/var/log/nginx           # سجلات
+    depends_on:
+      atheer-dashboard:
+        condition: service_healthy
+      atheer-switch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - atheer-net
 
 volumes:
   pgdata:
     driver: local
+
+networks:
+  atheer-net:
+    driver: bridge

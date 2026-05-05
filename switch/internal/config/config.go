@@ -16,6 +16,7 @@ type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	Carrier       CarrierConfig       `yaml:"carrier"`
 	Database      DatabaseConfig      `yaml:"database"`
+	CORS          CORSConfig          `yaml:"cors"`
 	Security      SecurityConfig      `yaml:"security"`
 	KMS           KMSConfig           `yaml:"kms"`
 	Notifications NotificationsConfig `yaml:"notifications"`
@@ -30,9 +31,9 @@ type ServerConfig struct {
 
 // CarrierConfig — إعدادات نقطة وصول شركة الاتصالات
 type CarrierConfig struct {
-	Enabled        bool   `yaml:"enabled"`         // تفعيل نقطة وصول الاتصالات
-	Port           int    `yaml:"port"`            // منفذ الاستماع لشبكة الاتصالات
-	CommissionRate int64  `yaml:"commission_rate"` // نسبة العمولة بالألف (مثلاً 5 = 0.5%)
+	Enabled        bool  `yaml:"enabled"`         // تفعيل نقطة وصول الاتصالات
+	Port           int   `yaml:"port"`            // منفذ الاستماع لشبكة الاتصالات
+	CommissionRate int64 `yaml:"commission_rate"` // نسبة العمولة بالألف (مثلاً 5 = 0.5%)
 }
 
 // DatabaseConfig — إعدادات قاعدة البيانات PostgreSQL
@@ -42,13 +43,23 @@ type DatabaseConfig struct {
 	Name     string `yaml:"name"`      // اسم قاعدة البيانات
 	User     string `yaml:"user"`      // المستخدم
 	Password string `yaml:"password"`  // كلمة المرور (تدعم ${ENV_VAR})
+	SSLMode  string `yaml:"ssl_mode"`  // وضع SSL: disable, require, verify-ca, verify-full
 	MaxConns int    `yaml:"max_conns"` // أقصى عدد اتصالات
 }
 
 // DSN — إنشاء سلسلة الاتصال بقاعدة البيانات
 func (d *DatabaseConfig) DSN() string {
-	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
-		d.Host, d.Port, d.Name, d.User, d.Password)
+	sslMode := d.SSLMode
+	if sslMode == "" {
+		sslMode = "disable" // افتراضي للتطوير المحلي
+	}
+	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
+		d.Host, d.Port, d.Name, d.User, d.Password, sslMode)
+}
+
+// CORSConfig — إعدادات CORS
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"` // النطاقات المسموحة
 }
 
 // SecurityConfig — إعدادات الأمان والتحقق
@@ -139,6 +150,9 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Database.MaxConns == 0 {
 		cfg.Database.MaxConns = 20
+	}
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		cfg.CORS.AllowedOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 	}
 	if cfg.Security.TimestampTolerance == 0 {
 		cfg.Security.TimestampTolerance = 60
