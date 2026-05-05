@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/atheer/switch/internal/model"
 	"github.com/jackc/pgx/v5"
@@ -59,6 +60,7 @@ func (r *reconRepo) Save(ctx context.Context, report *model.ReconciliationReport
 func (r *reconRepo) FindByDateAndWallet(ctx context.Context, reportDate, walletId string) (*model.ReconciliationReport, error) {
 	var report model.ReconciliationReport
 	var notes *string
+	var reportDateDB time.Time // pgx يتطلب time.Time لمسح نوع date
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, report_date, wallet_id, total_tx_count, total_amount,
@@ -67,7 +69,7 @@ func (r *reconRepo) FindByDateAndWallet(ctx context.Context, reportDate, walletI
 		FROM reconciliation_reports
 		WHERE report_date = $1 AND wallet_id = $2
 	`, reportDate, walletId).Scan(
-		&report.ID, &report.ReportDate, &report.WalletId,
+		&report.ID, &reportDateDB, &report.WalletId,
 		&report.TotalTxCount, &report.TotalAmount,
 		&report.SuccessCount, &report.FailedCount, &report.DisputedCount,
 		&report.Status, &notes, &report.CreatedAt, &report.UpdatedAt,
@@ -79,6 +81,7 @@ func (r *reconRepo) FindByDateAndWallet(ctx context.Context, reportDate, walletI
 		return nil, fmt.Errorf("مستودع التسوية: بحث بتاريخ %s ومحفظة %s: %w", reportDate, walletId, err)
 	}
 
+	report.ReportDate = reportDateDB.Format("2006-01-02")
 	if notes != nil {
 		report.Notes = *notes
 	}
@@ -136,9 +139,10 @@ func (r *reconRepo) List(ctx context.Context, walletId string, page, pageSize in
 	for rows.Next() {
 		var report model.ReconciliationReport
 		var notes *string
+		var reportDateDB time.Time // pgx يتطلب time.Time لمسح نوع date
 
 		if err := rows.Scan(
-			&report.ID, &report.ReportDate, &report.WalletId,
+			&report.ID, &reportDateDB, &report.WalletId,
 			&report.TotalTxCount, &report.TotalAmount,
 			&report.SuccessCount, &report.FailedCount, &report.DisputedCount,
 			&report.Status, &notes, &report.CreatedAt, &report.UpdatedAt,
@@ -146,6 +150,7 @@ func (r *reconRepo) List(ctx context.Context, walletId string, page, pageSize in
 			return nil, 0, fmt.Errorf("مستودع التسوية: قراءة صف: %w", err)
 		}
 
+		report.ReportDate = reportDateDB.Format("2006-01-02")
 		if notes != nil {
 			report.Notes = *notes
 		}

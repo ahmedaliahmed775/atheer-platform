@@ -49,14 +49,20 @@ type TimelineEvent struct {
 // HandleList — يعالج طلب قائمة المعاملات مع تصفية وصفحات
 // GET /admin/v1/transactions?status=SUCCESS&walletId=jawali&page=1&pageSize=20
 func (h *AdminTransactionsHandler) HandleList(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج معاملات التصفية من الاستعلام
 	query := r.URL.Query()
 
 	filters := model.TransactionFilters{
-		Status:   query.Get("status"),
-		WalletId: query.Get("walletId"),
+		Status:           query.Get("status"),
+		WalletId:         query.Get("walletId"),
+		ConnectionSource: query.Get("connectionSource"),
 	}
 
 	// فلترة حسب النطاق — WALLET_ADMIN يرى محفظته فقط
@@ -121,6 +127,11 @@ func (h *AdminTransactionsHandler) HandleList(w http.ResponseWriter, r *http.Req
 // HandleGetByID — يعالج طلب تفاصيل معاملة واحدة مع الجدول الزمني
 // GET /admin/v1/transactions/{id}
 func (h *AdminTransactionsHandler) HandleGetByID(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج معرّف المعاملة من المسار

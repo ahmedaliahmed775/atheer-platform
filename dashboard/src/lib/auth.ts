@@ -28,9 +28,19 @@ interface LoginResponse {
   scope: string;
 }
 
-/** عنوان API الخلفي */
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+/** مفتاح تخزين عنوان السويتش */
+const SWITCH_URL_KEY = "atheer_switch_url";
+const DEFAULT_SWITCH_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+/** الحصول على عنوان السويتش — يُقرأ من localStorage */
+function getSwitchUrl(): string {
+  if (typeof window === "undefined") return DEFAULT_SWITCH_URL;
+  try {
+    return localStorage.getItem(SWITCH_URL_KEY) || DEFAULT_SWITCH_URL;
+  } catch {
+    return DEFAULT_SWITCH_URL;
+  }
+}
 
 // ── عمليات التخزين ──
 
@@ -169,7 +179,7 @@ export async function login(
   password: string,
   totpCode?: string
 ): Promise<LoginResponse> {
-  const response = await fetch(`${API_BASE_URL}/admin/v1/auth/login`, {
+  const response = await fetch(`${getSwitchUrl()}/admin/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -182,7 +192,7 @@ export async function login(
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message || "فشل تسجيل الدخول");
+    throw new Error(data.errorMessage || data.message || "فشل تسجيل الدخول");
   }
 
   // حفظ الجلسة
@@ -199,7 +209,7 @@ export async function refreshSession(): Promise<boolean> {
   if (!refreshToken) return false;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/v1/auth/refresh`, {
+    const response = await fetch(`${getSwitchUrl()}/admin/v1/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -226,7 +236,7 @@ export async function logout(): Promise<void> {
 
   try {
     if (accessToken) {
-      await fetch(`${API_BASE_URL}/admin/v1/auth/logout`, {
+      await fetch(`${getSwitchUrl()}/admin/v1/auth/logout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

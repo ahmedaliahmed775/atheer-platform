@@ -18,6 +18,8 @@ interface WalletInfo {
   id: number;
   walletId: string;
   baseUrl: string;
+  apiKey?: string;
+  secret?: string;
   maxPayerLimit: number;
   timeoutMs: number;
   maxRetries: number;
@@ -63,6 +65,10 @@ export default function WalletsPage() {
   // اختبار الاتصال
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
+
+  // كشف البيانات الحساسة
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
 
   const isSuperAdmin = hasRole("SUPER_ADMIN");
   const isAdmin = hasRole("ADMIN");
@@ -220,26 +226,62 @@ export default function WalletsPage() {
                         <span className="font-mono text-xs text-muted-foreground" dir="ltr">{w.timeoutMs}ms</span>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground">••••••••</span>
+                        {isSuperAdmin && w.apiKey !== undefined ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs text-muted-foreground" dir="ltr">
+                              {revealedKeys[w.walletId] ? (w.apiKey || "—") : "••••••••"}
+                            </span>
+                            <button onClick={() => setRevealedKeys(p => ({...p, [w.walletId]: !p[w.walletId]}))}
+                              className="text-muted-foreground hover:text-foreground transition-colors">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                {revealedKeys[w.walletId]
+                                  ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                                  : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs text-muted-foreground">••••••••</span>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground">••••••••</span>
+                        {isSuperAdmin && w.secret !== undefined ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs text-muted-foreground" dir="ltr">
+                              {revealedSecrets[w.walletId] ? (w.secret || "—") : "••••••••"}
+                            </span>
+                            <button onClick={() => setRevealedSecrets(p => ({...p, [w.walletId]: !p[w.walletId]}))}
+                              className="text-muted-foreground hover:text-foreground transition-colors">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                {revealedSecrets[w.walletId]
+                                  ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                                  : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs text-muted-foreground">••••••••</span>
+                        )}
                       </TableCell>
                       {isAdmin && (
                         <TableCell>
                           <div className="flex items-center gap-1 flex-wrap">
-                            <button onClick={() => openEdit(w)}
-                              className="rounded-md bg-blue-500/10 px-2.5 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-500/20">
-                              تعديل
-                            </button>
-                            <button onClick={() => toggleActive(w)}
-                              className={`rounded-md px-2.5 py-1.5 text-[10px] font-medium transition-colors ${
-                                w.isActive
-                                  ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                                  : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                              }`}>
-                              {w.isActive ? "تعطيل" : "تفعيل"}
-                            </button>
+                            {isSuperAdmin && (
+                              <>
+                                <button onClick={() => openEdit(w)}
+                                  className="rounded-md bg-blue-500/10 px-2.5 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-500/20">
+                                  تعديل
+                                </button>
+                                <button onClick={() => toggleActive(w)}
+                                  className={`rounded-md px-2.5 py-1.5 text-[10px] font-medium transition-colors ${
+                                    w.isActive
+                                      ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                  }`}>
+                                  {w.isActive ? "تعطيل" : "تفعيل"}
+                                </button>
+                              </>
+                            )}
                             <button onClick={() => testConnection(w.walletId)}
                               disabled={testingId === w.walletId}
                               className="rounded-md bg-violet-500/10 px-2.5 py-1.5 text-[10px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20 disabled:opacity-50">

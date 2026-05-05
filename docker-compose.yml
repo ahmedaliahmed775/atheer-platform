@@ -35,6 +35,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "8081:8081"  # نقطة وصول شبكة الاتصالات (carrier)
     depends_on:
       postgres:
         condition: service_healthy

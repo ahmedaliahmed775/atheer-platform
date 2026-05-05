@@ -17,11 +17,17 @@ type AdminRepo interface {
 	// FindByEmail — يبحث عن مستخدم إداري ببريده الإلكتروني
 	FindByEmail(ctx context.Context, email string) (*model.AdminUser, error)
 
+	// FindByID — يبحث عن مستخدم إداري بمعرّفه
+	FindByID(ctx context.Context, id int64) (*model.AdminUser, error)
+
 	// Create — ينشئ مستخدم إداري جديد
 	Create(ctx context.Context, user *model.AdminUser) error
 
 	// Update — يحدّث بيانات مستخدم إداري
 	Update(ctx context.Context, user *model.AdminUser) error
+
+	// UpdateStatus — يحدّث حالة التفعيل لمستخدم إداري
+	UpdateStatus(ctx context.Context, id int64, isActive bool) error
 
 	// List — يعرض قائمة المستخدمين الإداريين
 	List(ctx context.Context) ([]model.AdminUser, error)
@@ -69,6 +75,38 @@ func (r *adminRepo) FindByEmail(ctx context.Context, email string) (*model.Admin
 	return &user, nil
 }
 
+// FindByID — يبحث عن مستخدم إداري بمعرّفه
+func (r *adminRepo) FindByID(ctx context.Context, id int64) (*model.AdminUser, error) {
+	var user model.AdminUser
+	var totpSecret *string
+	var lastLoginAt *time.Time
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, email, password_hash, totp_secret,
+		       role, scope, is_active, last_login_at,
+		       created_at, updated_at
+		FROM admin_users
+		WHERE id = $1
+	`, id).Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &totpSecret,
+		&user.Role, &user.Scope, &user.IsActive, &lastLoginAt,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // المستخدم غير موجود
+		}
+		return nil, fmt.Errorf("مستودع الإداريين: بحث بمعرّف %d: %w", id, err)
+	}
+
+	if totpSecret != nil {
+		user.TOTPSecret = *totpSecret
+	}
+	user.LastLoginAt = lastLoginAt
+
+	return &user, nil
+}
+
 // Create — ينشئ مستخدم إداري جديد
 func (r *adminRepo) Create(ctx context.Context, user *model.AdminUser) error {
 	_, err := r.pool.Exec(ctx, `
@@ -97,6 +135,19 @@ func (r *adminRepo) Update(ctx context.Context, user *model.AdminUser) error {
 	)
 	if err != nil {
 		return fmt.Errorf("مستودع الإداريين: تحديث مستخدم %s: %w", user.Email, err)
+	}
+	return nil
+}
+
+// UpdateStatus — يحدّث حالة التفعيل لمستخدم إداري
+func (r *adminRepo) UpdateStatus(ctx context.Context, id int64, isActive bool) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE admin_users
+		SET is_active = $1, updated_at = NOW()
+		WHERE id = $2
+	`, isActive, id)
+	if err != nil {
+		return fmt.Errorf("مستودع الإداريين: تحديث حالة المستخدم %d: %w", id, err)
 	}
 	return nil
 }

@@ -14,17 +14,25 @@ import (
 // Config — الإعدادات العامة للتطبيق
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
+	Carrier       CarrierConfig       `yaml:"carrier"`
 	Database      DatabaseConfig      `yaml:"database"`
 	Security      SecurityConfig      `yaml:"security"`
 	KMS           KMSConfig           `yaml:"kms"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
-// ServerConfig — إعدادات خادم HTTP
+// ServerConfig — إعدادات خادم HTTP العام
 type ServerConfig struct {
 	Port         int           `yaml:"port"`          // منفذ الاستماع
 	ReadTimeout  time.Duration `yaml:"read_timeout"`  // مهلة القراءة
 	WriteTimeout time.Duration `yaml:"write_timeout"` // مهلة الكتابة
+}
+
+// CarrierConfig — إعدادات نقطة وصول شركة الاتصالات
+type CarrierConfig struct {
+	Enabled        bool   `yaml:"enabled"`         // تفعيل نقطة وصول الاتصالات
+	Port           int    `yaml:"port"`            // منفذ الاستماع لشبكة الاتصالات
+	CommissionRate int64  `yaml:"commission_rate"` // نسبة العمولة بالألف (مثلاً 5 = 0.5%)
 }
 
 // DatabaseConfig — إعدادات قاعدة البيانات PostgreSQL
@@ -119,6 +127,12 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Server.WriteTimeout == 0 {
 		cfg.Server.WriteTimeout = 30 * time.Second
+	}
+	if cfg.Carrier.Port == 0 {
+		cfg.Carrier.Port = 8081
+	}
+	if cfg.Carrier.CommissionRate == 0 {
+		cfg.Carrier.CommissionRate = 5 // 0.5% افتراضياً
 	}
 	if cfg.Database.Port == 0 {
 		cfg.Database.Port = 5432

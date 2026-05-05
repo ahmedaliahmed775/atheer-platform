@@ -43,19 +43,27 @@ func NewTransactionRepo(pool *pgxpool.Pool) TransactionRepo {
 
 // Save — يحفظ سجل معاملة جديد
 func (r *transactionRepo) Save(ctx context.Context, tx *model.Transaction) error {
+	// تحديد مصدر الاتصال — الافتراضي "internet"
+	connSource := tx.ConnectionSource
+	if connSource == "" {
+		connSource = model.SourceInternet
+	}
+
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO transactions (
 			transaction_id, payer_public_id, merchant_id,
 			payer_wallet_id, merchant_wallet_id,
 			amount, currency, counter, status,
-			error_code, duration_ms, debit_ref, credit_ref
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			error_code, duration_ms, debit_ref, credit_ref,
+			connection_source
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`,
 		tx.TransactionId, tx.PayerPublicId, tx.MerchantId,
 		tx.PayerWalletId, tx.MerchantWalletId,
 		tx.Amount, tx.Currency, tx.Counter, tx.Status,
 		nullIfEmpty(tx.ErrorCode), tx.DurationMs,
 		nullIfEmpty(tx.DebitRef), nullIfEmpty(tx.CreditRef),
+		connSource,
 	)
 	if err != nil {
 		return fmt.Errorf("مستودع المعاملات: حفظ المعاملة %s: %w", tx.TransactionId, err)
@@ -72,14 +80,16 @@ func (r *transactionRepo) FindByID(ctx context.Context, transactionId string) (*
 		SELECT id, transaction_id, payer_public_id, merchant_id,
 		       payer_wallet_id, merchant_wallet_id,
 		       amount, currency, counter, status,
-		       error_code, duration_ms, debit_ref, credit_ref, created_at
+		       error_code, duration_ms, debit_ref, credit_ref,
+		       connection_source, created_at
 		FROM transactions
 		WHERE transaction_id = $1
 	`, transactionId).Scan(
 		&tx.ID, &tx.TransactionId, &tx.PayerPublicId, &tx.MerchantId,
 		&tx.PayerWalletId, &tx.MerchantWalletId,
 		&tx.Amount, &tx.Currency, &tx.Counter, &tx.Status,
-		&errorCode, &tx.DurationMs, &debitRef, &creditRef, &tx.CreatedAt,
+		&errorCode, &tx.DurationMs, &debitRef, &creditRef,
+		&tx.ConnectionSource, &tx.CreatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -129,6 +139,11 @@ func (r *transactionRepo) List(ctx context.Context, filters model.TransactionFil
 		args = append(args, filters.WalletId)
 		argIdx++
 	}
+	if filters.ConnectionSource != "" {
+		conditions = append(conditions, fmt.Sprintf("connection_source = $%d", argIdx))
+		args = append(args, filters.ConnectionSource)
+		argIdx++
+	}
 	if !filters.FromDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", argIdx))
 		args = append(args, filters.FromDate)
@@ -164,7 +179,8 @@ func (r *transactionRepo) List(ctx context.Context, filters model.TransactionFil
 		SELECT id, transaction_id, payer_public_id, merchant_id,
 		       payer_wallet_id, merchant_wallet_id,
 		       amount, currency, counter, status,
-		       error_code, duration_ms, debit_ref, credit_ref, created_at
+		       error_code, duration_ms, debit_ref, credit_ref,
+		       connection_source, created_at
 		FROM transactions %s
 		ORDER BY created_at DESC
 		LIMIT $%d OFFSET $%d
@@ -187,7 +203,8 @@ func (r *transactionRepo) List(ctx context.Context, filters model.TransactionFil
 			&tx.ID, &tx.TransactionId, &tx.PayerPublicId, &tx.MerchantId,
 			&tx.PayerWalletId, &tx.MerchantWalletId,
 			&tx.Amount, &tx.Currency, &tx.Counter, &tx.Status,
-			&errorCode, &tx.DurationMs, &debitRef, &creditRef, &tx.CreatedAt,
+			&errorCode, &tx.DurationMs, &debitRef, &creditRef,
+			&tx.ConnectionSource, &tx.CreatedAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("مستودع المعاملات: قراءة صف: %w", err)
 		}

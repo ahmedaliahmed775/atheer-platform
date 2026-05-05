@@ -1,11 +1,50 @@
 // عميل API للسويتش — fetch wrapper مع JWT
 // يُضيف رمز المصادقة تلقائياً ويعالج أخطاء 401
+// يدعم تغيير عنوان السويتش ديناميكياً من الإعدادات
 
 import { getAccessToken, refreshSession, clearSession } from "./auth";
 
-/** عنوان API الخلفي */
-const API_BASE_URL =
+/** مفتاح تخزين عنوان السويتش */
+const SWITCH_URL_KEY = "atheer_switch_url";
+
+/** القيمة الافتراضية لعنوان السويتش */
+const DEFAULT_SWITCH_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+/** الحصول على عنوان السويتش الحالي */
+export function getSwitchUrl(): string {
+  if (typeof window === "undefined") return DEFAULT_SWITCH_URL;
+  try {
+    return localStorage.getItem(SWITCH_URL_KEY) || DEFAULT_SWITCH_URL;
+  } catch {
+    return DEFAULT_SWITCH_URL;
+  }
+}
+
+/** حفظ عنوان السويتش */
+export function setSwitchUrl(url: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SWITCH_URL_KEY, url);
+  } catch {
+    // تجاهل أخطاء التخزين
+  }
+}
+
+/** إعادة عنوان السويتش للقيمة الافتراضية */
+export function resetSwitchUrl(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(SWITCH_URL_KEY);
+  } catch {
+    // تجاهل
+  }
+}
+
+/** عنوان API الخلفي — يُقرأ ديناميكياً من localStorage */
+function getApiBaseUrl(): string {
+  return getSwitchUrl();
+}
 
 /** خيارات الطلب */
 export interface RequestOptions {
@@ -58,8 +97,8 @@ export async function apiRequest<T>(
     contentType = "application/json",
   } = options;
 
-  // بناء الرابط
-  let url = `${API_BASE_URL}${path}`;
+  // بناء الرابط — استخدام العنوان الديناميكي
+  let url = `${getApiBaseUrl()}${path}`;
   if (params) {
     url += buildQueryString(params);
   }
@@ -136,8 +175,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      data.code || "UNKNOWN",
-      data.message || "حدث خطأ غير متوقع",
+      data.errorCode || data.code || "UNKNOWN",
+      data.errorMessage || data.message || "حدث خطأ غير متوقع",
       data.details
     );
   }

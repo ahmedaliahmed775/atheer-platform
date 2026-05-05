@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { apiGet, apiPost } from "@/lib/api";
+import { hasRole } from "@/lib/auth";
 
 // ── الأنواع ──
 interface ReconReport {
@@ -115,11 +116,13 @@ export default function ReconciliationPage() {
           <h1 className="text-2xl font-bold text-foreground">التسوية</h1>
           <p className="text-sm text-muted-foreground">تسوية المعاملات بين السويتش والمحافظ</p>
         </div>
-        <button onClick={() => { setRunOpen(true); setRunError(null); setRunResult(null); }}
-          className="flex items-center gap-2 rounded-lg bg-gradient-to-l from-blue-600 to-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-600/20 transition-all hover:shadow-blue-600/30">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          بدء تسوية جديدة
-        </button>
+        {hasRole("ADMIN") && (
+          <button onClick={() => { setRunOpen(true); setRunError(null); setRunResult(null); }}
+            className="flex items-center gap-2 rounded-lg bg-gradient-to-l from-blue-600 to-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-600/20 transition-all hover:shadow-blue-600/30">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            بدء تسوية جديدة
+          </button>
+        )}
       </div>
 
       {/* KPI */}

@@ -42,6 +42,7 @@ interface Transaction {
   durationMs: number;
   debitRef: string;
   creditRef: string;
+  connectionSource: string;
   createdAt: string;
 }
 
@@ -131,6 +132,7 @@ export default function TransactionsPage() {
   const [walletId, setWalletId] = useState("");
   const [payerPublicId, setPayerPublicId] = useState("");
   const [merchantId, setMerchantId] = useState("");
+  const [connectionSource, setConnectionSource] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -162,6 +164,7 @@ export default function TransactionsPage() {
       if (effectiveWalletId) params.walletId = effectiveWalletId;
       if (payerPublicId) params.payerPublicId = payerPublicId;
       if (merchantId) params.merchantId = merchantId;
+      if (connectionSource) params.connectionSource = connectionSource;
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
@@ -177,7 +180,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination, status, effectiveWalletId, payerPublicId, merchantId, fromDate, toDate]);
+  }, [pagination, status, effectiveWalletId, payerPublicId, merchantId, connectionSource, fromDate, toDate]);
 
   useEffect(() => {
     fetchTransactions();
@@ -195,6 +198,7 @@ export default function TransactionsPage() {
       if (effectiveWalletId) params.walletId = effectiveWalletId;
       if (payerPublicId) params.payerPublicId = payerPublicId;
       if (merchantId) params.merchantId = merchantId;
+      if (connectionSource) params.connectionSource = connectionSource;
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
@@ -216,6 +220,7 @@ export default function TransactionsPage() {
         "الحالة": tx.status,
         "رمز الخطأ": tx.errorCode || "—",
         "المدة (ms)": tx.durationMs,
+        "مصدر الاتصال": tx.connectionSource === "carrier" ? "اتصالات" : "إنترنت",
       }));
 
       const ws = XLSX.utils.json_to_sheet(wsData);
@@ -295,6 +300,25 @@ export default function TransactionsPage() {
         accessorKey: "status",
         header: "الحالة",
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        accessorKey: "connectionSource",
+        header: "المصدر",
+        cell: ({ row }) => {
+          const src = row.original.connectionSource || "internet";
+          return (
+            <Badge
+              variant="outline"
+              className={
+                src === "carrier"
+                  ? "text-amber-500 border-amber-500/30"
+                  : "text-blue-400 border-blue-400/30"
+              }
+            >
+              {src === "carrier" ? "اتصالات" : "إنترنت"}
+            </Badge>
+          );
+        },
       },
       {
         accessorKey: "durationMs",
@@ -429,6 +453,25 @@ export default function TransactionsPage() {
                 dir="ltr"
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
+            </div>
+
+            {/* مصدر الاتصال */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                مصدر الاتصال
+              </label>
+              <select
+                value={connectionSource}
+                onChange={(e) => {
+                  setConnectionSource(e.target.value);
+                  setPagination((p) => ({ ...p, pageIndex: 0 }));
+                }}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">الكل</option>
+                <option value="internet">إنترنت</option>
+                <option value="carrier">اتصالات</option>
+              </select>
             </div>
 
             {/* من تاريخ */}

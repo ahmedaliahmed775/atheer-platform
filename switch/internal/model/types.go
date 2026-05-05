@@ -184,33 +184,66 @@ type WalletAdapter interface {
 
 // --- سجل المعاملات (§4) ---
 
+// --- ثوابت مصدر الاتصال ---
+
+const (
+	SourceInternet = "internet" // الإنترنت العام
+	SourceCarrier  = "carrier"  // شبكة شركة الاتصالات (بدون رسوم بيانات)
+)
+
+// ConnectionSourceCtxKey — مفتاح سياق مصدر الاتصال
+type ConnectionSourceCtxKey struct{}
+
 // Transaction — سجل المعاملة في جدول transactions
 type Transaction struct {
-	ID               int64     // المعرّف الداخلي (توليد تلقائي)
-	TransactionId    string    // معرّف المعاملة (UUID)
-	PayerPublicId    string    // المعرّف العام للدافع
-	MerchantId       string    // معرّف التاجر
-	PayerWalletId    string    // معرّف محفظة الدافع
-	MerchantWalletId string    // معرّف محفظة التاجر
-	Amount           int64     // المبلغ بالوحدة الصغرى
-	Currency         string    // العملة
-	Counter          int64     // عداد المعاملة
-	Status           string    // الحالة: SUCCESS أو FAILED أو PENDING أو REVERSED
-	ErrorCode        string    // رمز الخطأ إن وُجد
-	DurationMs       int       // مدة التنفيذ بالملي ثانية
-	DebitRef         string    // مرجع الخصم من المحفظة
-	CreditRef        string    // مرجع الإيداع في المحفظة
-	CreatedAt        time.Time // تاريخ الإنشاء
+	ID               int64     `json:"id"`               // المعرّف الداخلي (توليد تلقائي)
+	TransactionId    string    `json:"transactionId"`    // معرّف المعاملة (UUID)
+	PayerPublicId    string    `json:"payerPublicId"`    // المعرّف العام للدافع
+	MerchantId       string    `json:"merchantId"`       // معرّف التاجر
+	PayerWalletId    string    `json:"payerWalletId"`    // معرّف محفظة الدافع
+	MerchantWalletId string    `json:"merchantWalletId"` // معرّف محفظة التاجر
+	Amount           int64     `json:"amount"`           // المبلغ بالوحدة الصغرى
+	Currency         string    `json:"currency"`         // العملة
+	Counter          int64     `json:"counter"`          // عداد المعاملة
+	Status           string    `json:"status"`           // الحالة: SUCCESS أو FAILED أو PENDING أو REVERSED
+	ErrorCode        string    `json:"errorCode"`        // رمز الخطأ إن وُجد
+	DurationMs       int       `json:"durationMs"`       // مدة التنفيذ بالملي ثانية
+	DebitRef         string    `json:"debitRef"`         // مرجع الخصم من المحفظة
+	CreditRef        string    `json:"creditRef"`        // مرجع الإيداع في المحفظة
+	ConnectionSource string    `json:"connectionSource"` // مصدر الاتصال: internet أو carrier
+	CreatedAt        time.Time `json:"createdAt"`        // تاريخ الإنشاء
 }
 
 // TransactionFilters — معاملات التصفية لقائمة المعاملات
 type TransactionFilters struct {
-	PayerPublicId string    // تصفية حسب الدافع
-	MerchantId    string    // تصفية حسب التاجر
-	Status        string    // تصفية حسب الحالة
-	WalletId      string    // تصفية حسب المحفظة
-	FromDate      time.Time // من تاريخ
-	ToDate        time.Time // إلى تاريخ
+	PayerPublicId    string    // تصفية حسب الدافع
+	MerchantId       string    // تصفية حسب التاجر
+	Status           string    // تصفية حسب الحالة
+	WalletId         string    // تصفية حسب المحفظة
+	ConnectionSource string    // تصفية حسب مصدر الاتصال: internet أو carrier
+	FromDate         time.Time // من تاريخ
+	ToDate           time.Time // إلى تاريخ
+}
+
+// --- إحصائيات العمولات ---
+
+// CarrierCommissionStats — إحصائيات عمولات شركة الاتصالات لكل محفظة
+type CarrierCommissionStats struct {
+	WalletId       string // معرّف المحفظة
+	TotalTxCount   int    // إجمالي عدد المعاملات عبر شبكة الاتصالات
+	TotalAmount    int64  // إجمالي المبلغ بالوحدة الصغرى
+	SuccessCount   int    // عدد المعاملات الناجحة
+	FailedCount    int    // عدد المعاملات الفاشلة
+	CommissionRate int64  // نسبة العمولة بالألف (مثلاً 5 = 0.5%)
+	CommissionDue  int64  // العمولة المستحقة بالوحدة الصغرى
+}
+
+// CarrierCommissionSummary — ملخص إحصائيات العمولات
+type CarrierCommissionSummary struct {
+	Wallets      []CarrierCommissionStats // تفاصيل كل محفظة
+	TotalTxCount int                      // إجمالي المعاملات عبر الاتصالات
+	TotalAmount  int64                    // إجمالي المبلغ
+	TotalDue     int64                    // إجمالي العمولات المستحقة
 }
 
 // --- المستخدمون الإداريون (§4) ---

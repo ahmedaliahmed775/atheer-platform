@@ -3,24 +3,33 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/atheer/switch/internal/db"
 	"github.com/atheer/switch/internal/middleware"
 	"github.com/atheer/switch/internal/model"
 )
 
+// AdapterRegistry — واجهة سجل المحوّلات (لاستخدامها في اختبار الاتصال)
+type AdapterRegistry interface {
+	Get(walletId string) (model.WalletAdapter, error)
+	List() []string
+}
+
 // AdminWalletsHandler — معالج محافظ الإدارة
 type AdminWalletsHandler struct {
 	walletRepo db.WalletRepo
+	registry   AdapterRegistry
 }
 
 // NewAdminWalletsHandler — ينشئ معالج محافظ الإدارة
-func NewAdminWalletsHandler(walletRepo db.WalletRepo) *AdminWalletsHandler {
-	return &AdminWalletsHandler{walletRepo: walletRepo}
+func NewAdminWalletsHandler(walletRepo db.WalletRepo, registry AdapterRegistry) *AdminWalletsHandler {
+	return &AdminWalletsHandler{walletRepo: walletRepo, registry: registry}
 }
 
 // WalletListResponse — استجابة قائمة المحافظ
@@ -28,11 +37,13 @@ type WalletListResponse struct {
 	Wallets []WalletInfo `json:"wallets"` // قائمة المحافظ
 }
 
-// WalletInfo — معلومات محفظة (بدون بيانات حساسة)
+// WalletInfo — معلومات محفظة (البيانات الحساسة تظهر فقط لـ SUPER_ADMIN)
 type WalletInfo struct {
 	ID            int64  `json:"id"`            // المعرّف الداخلي
 	WalletId      string `json:"walletId"`      // معرّف المحفظة
 	BaseURL       string `json:"baseUrl"`       // عنوان API
+	APIKey        string `json:"apiKey"`        // مفتاح API (SUPER_ADMIN فقط)
+	Secret        string `json:"secret"`        // السر المشترك (SUPER_ADMIN فقط)
 	MaxPayerLimit int64  `json:"maxPayerLimit"` // الحد الأقصى للدافع
 	TimeoutMs     int    `json:"timeoutMs"`     // مهلة الطلب
 	MaxRetries    int    `json:"maxRetries"`    // عدد إعادة المحاولات
@@ -66,6 +77,11 @@ type UpdateWalletRequest struct {
 // HandleList — يعالج طلب قائمة المحافظ
 // GET /admin/v1/wallets
 func (h *AdminWalletsHandler) HandleList(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// فلترة النطاق — WALLET_ADMIN يرى محفظته فقط
@@ -81,7 +97,10 @@ func (h *AdminWalletsHandler) HandleList(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// تحويل إلى معلومات عامة (بدون APIKey و Secret)
+	// تحويل إلى معلومات — SUPER_ADMIN يرى APIKey و Secret
+	userRole := middleware.GetAdminRoleFromContext(ctx)
+	showSecrets := userRole == model.RoleSuperAdmin
+
 	var result []WalletInfo
 	for _, wc := range wallets {
 		// فلترة النطاق
@@ -89,7 +108,7 @@ func (h *AdminWalletsHandler) HandleList(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 
-		result = append(result, WalletInfo{
+		info := WalletInfo{
 			ID:            wc.ID,
 			WalletId:      wc.WalletId,
 			BaseURL:       wc.BaseURL,
@@ -99,7 +118,12 @@ func (h *AdminWalletsHandler) HandleList(w http.ResponseWriter, r *http.Request)
 			IsActive:      wc.IsActive,
 			CreatedAt:     wc.CreatedAt.Format("2006-01-02 15:04:05"),
 			UpdatedAt:     wc.UpdatedAt.Format("2006-01-02 15:04:05"),
-		})
+		}
+		if showSecrets {
+			info.APIKey = wc.APIKey
+			info.Secret = wc.Secret
+		}
+		result = append(result, info)
 	}
 
 	if result == nil {
@@ -112,6 +136,11 @@ func (h *AdminWalletsHandler) HandleList(w http.ResponseWriter, r *http.Request)
 // HandleCreate — يعالج طلب إضافة محفظة جديدة
 // POST /admin/v1/wallets
 func (h *AdminWalletsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — SUPER_ADMIN فقط
+	if !checkRole(w, r, model.RoleSuperAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	var req CreateWalletRequest
@@ -193,6 +222,11 @@ func (h *AdminWalletsHandler) HandleCreate(w http.ResponseWriter, r *http.Reques
 // HandleUpdate — يعالج طلب تحديث إعدادات محفظة
 // PUT /admin/v1/wallets/{id}
 func (h *AdminWalletsHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — SUPER_ADMIN فقط
+	if !checkRole(w, r, model.RoleSuperAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	walletId := r.PathValue("id")
@@ -289,9 +323,71 @@ func (h *AdminWalletsHandler) HandlePatch(w http.ResponseWriter, r *http.Request
 	h.HandleUpdate(w, r)
 }
 
-// formatWalletInfo — يحوّل WalletConfig إلى WalletInfo بدون بيانات حساسة
-func formatWalletInfo(wc model.WalletConfig) WalletInfo {
-	return WalletInfo{
+// HandleTest — يعالج طلب اختبار اتصال محفظة
+// POST /admin/v1/wallets/{id}/test
+func (h *AdminWalletsHandler) HandleTest(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
+	ctx := r.Context()
+
+	walletId := r.PathValue("id")
+	if walletId == "" {
+		writeAdminJSON(w, http.StatusBadRequest, map[string]string{
+			"errorCode":    model.ErrInvalidRequest,
+			"errorMessage": "معرّف المحفظة مطلوب",
+		})
+		return
+	}
+
+	// البحث عن المحفظة في قاعدة البيانات
+	wc, err := h.walletRepo.FindByWalletId(ctx, walletId)
+	if err != nil {
+		slog.Error("إدارة المحافظ: فشل البحث", "walletId", walletId, "error", err)
+		writeAdminJSON(w, http.StatusInternalServerError, map[string]string{
+			"errorCode":    "INTERNAL_ERROR",
+			"errorMessage": "خطأ داخلي",
+		})
+		return
+	}
+	if wc == nil {
+		writeAdminJSON(w, http.StatusNotFound, map[string]string{
+			"errorCode":    model.ErrWalletNotFound,
+			"errorMessage": "المحفظة غير موجودة",
+		})
+		return
+	}
+
+	// محاولة الحصول على المحوّل من السجل
+	adapter, err := h.registry.Get(walletId)
+	if err != nil {
+		writeAdminJSON(w, http.StatusOK, map[string]interface{}{
+			"walletId": walletId,
+			"status":   "not_registered",
+			"message":  "المحوّل غير مسجّل في السويتش",
+		})
+		return
+	}
+
+	// اختبار الاتصال عبر VerifyAccessToken مع بيانات وهمية
+	testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, verifyErr := adapter.VerifyAccessToken(testCtx, walletId, "test_connection_probe")
+
+	writeAdminJSON(w, http.StatusOK, map[string]interface{}{
+		"walletId": walletId,
+		"status":   "reachable",
+		"message":  "تم الاتصال بالمحفظة بنجاح",
+		"verifyOk": verifyErr == nil,
+	})
+}
+
+// formatWalletInfo — يحوّل WalletConfig إلى WalletInfo (البيانات الحساسة حسب الدور)
+func formatWalletInfo(wc model.WalletConfig, showSecrets bool) WalletInfo {
+	info := WalletInfo{
 		ID:            wc.ID,
 		WalletId:      wc.WalletId,
 		BaseURL:       wc.BaseURL,
@@ -302,6 +398,11 @@ func formatWalletInfo(wc model.WalletConfig) WalletInfo {
 		CreatedAt:     wc.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:     wc.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
+	if showSecrets {
+		info.APIKey = wc.APIKey
+		info.Secret = wc.Secret
+	}
+	return info
 }
 
 // parseInt64OrDefault — يحلل معامل كعدد int64 مع قيمة افتراضية

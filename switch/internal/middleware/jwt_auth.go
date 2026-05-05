@@ -41,6 +41,12 @@ func JWTAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// مسارات المصادقة لا تحتاج JWT
+			if strings.HasPrefix(r.URL.Path, "/admin/v1/auth/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// استخراج الرمز من رأس Authorization
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {

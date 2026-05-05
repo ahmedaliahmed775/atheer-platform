@@ -25,6 +25,7 @@ import (
 	"github.com/atheer/switch/internal/execute"
 	"github.com/atheer/switch/internal/gate"
 	"github.com/atheer/switch/internal/middleware"
+	"github.com/atheer/switch/internal/model"
 	"github.com/atheer/switch/internal/notify"
 	"github.com/atheer/switch/internal/verify"
 	"github.com/atheer/switch/migrations"
@@ -76,6 +77,7 @@ func main() {
 	walletRepo := db.NewWalletRepo(pool)
 	adminRepo := db.NewAdminRepo(pool)
 	reconRepo := db.NewReconRepo(pool)
+	commissionRepo := db.NewCarrierCommissionRepo(pool)
 
 	// ── 6. إنشاء نظام إدارة المفاتيح (KMS) ──
 	masterKeyBytes, err := hex.DecodeString(cfg.KMS.MasterKey)
@@ -180,7 +182,7 @@ func main() {
 	syncHandler := api.NewSyncHandler(payerRepo)
 	payerLimitHandler := api.NewPayerLimitHandler(payerRepo, walletRepo)
 	unenrollHandler := api.NewUnenrollHandler(payerRepo)
-	healthHandler := api.NewHealthHandler(pool)
+	healthHandler := api.NewHealthHandler(pool, cfg.Carrier.Enabled)
 
 	// ── 11b. إنشاء معالجات الإدارة ──
 	// تحليل مدة صلاحية JWT
@@ -193,10 +195,13 @@ func main() {
 	authHandler := admin.NewAuthHandler(adminRepo, cfg.Security.JWTSecret, jwtExpiry)
 	adminTxHandler := admin.NewAdminTransactionsHandler(txRepo)
 	adminUsersHandler := admin.NewAdminUsersHandler(payerRepo, walletRepo)
-	adminWalletsHandler := admin.NewAdminWalletsHandler(walletRepo)
+	adminWalletsHandler := admin.NewAdminWalletsHandler(walletRepo, registry)
 	adminAnalyticsHandler := admin.NewAdminAnalyticsHandler(txRepo)
 	adminHealthHandler := admin.NewAdminHealthHandler(pool, registry)
 	adminReconHandler := admin.NewAdminReconHandler(reconRepo, txRepo, walletRepo)
+	adminAdminsHandler := admin.NewAdminAdminsHandler(adminRepo)
+	adminCommissionHandler := admin.NewAdminCommissionHandler(commissionRepo, cfg.Carrier.CommissionRate)
+	terminalHandler := admin.NewTerminalHandler(cfg.Security.JWTSecret)
 
 	// ضبط وقت بدء التشغيل لحساب مدة التشغيل في فحص الصحة
 	admin.SetStartTime(time.Now())
@@ -204,6 +209,7 @@ func main() {
 	// ── 12. إعداد الوسطاء ──
 	apiKeyMiddleware := middleware.APIKeyMiddleware(walletRepo)
 	jwtAuthMiddleware := middleware.JWTAuthMiddleware(cfg.Security.JWTSecret)
+	corsMiddleware := middleware.CORSMiddleware(middleware.DefaultCORSConfig())
 	loggingMiddleware := middleware.LoggingMiddleware
 	requestIDMiddleware := middleware.RequestIDMiddleware
 
@@ -242,6 +248,7 @@ func main() {
 	adminMux.HandleFunc("POST /admin/v1/wallets", adminWalletsHandler.HandleCreate)
 	adminMux.HandleFunc("PUT /admin/v1/wallets/{id}", adminWalletsHandler.HandleUpdate)
 	adminMux.HandleFunc("PATCH /admin/v1/wallets/{id}", adminWalletsHandler.HandlePatch)
+	adminMux.HandleFunc("POST /admin/v1/wallets/{id}/test", adminWalletsHandler.HandleTest)
 
 	// مسارات التحليلات — تحتاج دور VIEWER على الأقل
 	adminMux.HandleFunc("GET /admin/v1/analytics/summary", adminAnalyticsHandler.HandleSummary)
@@ -253,47 +260,95 @@ func main() {
 	adminMux.HandleFunc("GET /admin/v1/health/adapters", adminHealthHandler.HandleAdapters)
 	adminMux.HandleFunc("GET /admin/v1/health/system", adminHealthHandler.HandleSystem)
 
+	// مسارات حسابات الإدارة — تحتاج دور ADMIN على الأقل (إنشاء/تعديل: SUPER_ADMIN فقط)
+	adminMux.HandleFunc("GET /admin/v1/admins", adminAdminsHandler.HandleList)
+	adminMux.HandleFunc("POST /admin/v1/admins", adminAdminsHandler.HandleCreate)
+	adminMux.HandleFunc("PATCH /admin/v1/admins/{id}", adminAdminsHandler.HandlePatch)
+
 	// مسارات التسوية — تحتاج دور ADMIN على الأقل
 	adminMux.HandleFunc("POST /admin/v1/reconciliation/run", adminReconHandler.HandleRun)
 	adminMux.HandleFunc("GET /admin/v1/reconciliation/reports", adminReconHandler.HandleListReports)
+
+	// مسارات العمولات — تحتاج دور ADMIN على الأقل
+	adminMux.HandleFunc("GET /admin/v1/commission/stats", adminCommissionHandler.HandleStats)
 
 	// تجميع المُوجّهات — المسارات العامة أولاً ثم API ثم الإدارة
 	rootMux := http.NewServeMux()
 	rootMux.Handle("GET /health", publicMux)
 	rootMux.Handle("/api/", apiKeyMiddleware(apiMux))           // مفتاح API لمسارات API فقط
 	rootMux.Handle("/admin/", jwtAuthMiddleware(adminMux))       // JWT لمسارات الإدارة
+	// مسار الطرفية — WebSocket يتحقق من JWT بنفسه (من معامل الاستعلام ?token=)
+	// لا يمر عبر وسيط JWT لأن المتصفح لا يمكنه إرسال رأس Authorization مع WebSocket
+	// يجب تسجيله بعد /admin/ لأن Go ServeMux يُفضّل المسارات الأكثر تحديداً
+	rootMux.HandleFunc("GET /admin/v1/terminal", terminalHandler.HandleTerminal)
 
-	// تطبيق الوسطاء العامة: معرّف الطلب ← التسجيل ← المُوجّه
+	// تطبيق الوسطاء العامة: CORS ← معرّف الطلب ← التسجيل ← المُوجّه
 	var handler http.Handler = rootMux
+	handler = corsMiddleware(handler)
 	handler = loggingMiddleware(handler)
 	handler = requestIDMiddleware(handler)
 
-	// ── 14. إنشاء خادم HTTP ──
+	// ── 14. إنشاء خادم HTTP العام (إنترنت) ──
+	// الوسيط يُعطّي كل الطلبات بمصدر "internet"
+	internetHandler := middleware.ConnectionSourceMiddleware(model.SourceInternet)(handler)
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      handler,
+		Handler:      internetHandler,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// ── 15. تشغيل الخادم في goroutine ──
+	// ── 14b. إنشاء خادم HTTP لشبكة الاتصالات (carrier) ──
+	// نفس المسارات لكن مع وسيط مصدر الاتصال "carrier"
+	var carrierSrv *http.Server
+	if cfg.Carrier.Enabled {
+		carrierHandler := middleware.ConnectionSourceMiddleware(model.SourceCarrier)(handler)
+		carrierSrv = &http.Server{
+			Addr:         fmt.Sprintf(":%d", cfg.Carrier.Port),
+			Handler:      carrierHandler,
+			ReadTimeout:  cfg.Server.ReadTimeout,
+			WriteTimeout: cfg.Server.WriteTimeout,
+			IdleTimeout:  60 * time.Second,
+		}
+	}
+
+	// ── 15. تشغيل الخوادم في goroutines ──
 	go func() {
-		slog.Info("خادم HTTP يستمع", "port", cfg.Server.Port)
+		slog.Info("خادم HTTP العام يستمع", "port", cfg.Server.Port, "source", "internet")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("فشل خادم HTTP", "error", err)
+			slog.Error("فشل خادم HTTP العام", "error", err)
 			os.Exit(1)
 		}
 	}()
 
+	if carrierSrv != nil {
+		go func() {
+			slog.Info("خادم HTTP لشبكة الاتصالات يستمع", "port", cfg.Carrier.Port, "source", "carrier")
+			if err := carrierSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("فشل خادم HTTP لشبكة الاتصالات", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	// ── 16. إرسال تنبيه بدء التشغيل ──
+	alertMsg := fmt.Sprintf("🚀 سويتش Atheer بدأ التشغيل على المنفذ %d", cfg.Server.Port)
+	if cfg.Carrier.Enabled {
+		alertMsg += fmt.Sprintf(" (شبكة الاتصالات: المنفذ %d)", cfg.Carrier.Port)
+	}
 	_ = notifier.SendAlert(context.Background(),
 		notify.AlertLevelInfo,
 		notify.EventAdapterRecovered,
-		fmt.Sprintf("🚀 سويتش Atheer بدأ التشغيل على المنفذ %d", cfg.Server.Port),
+		alertMsg,
 	)
 
-	slog.Info("سويتش Atheer جاهز لاستقبال الطلبات", "port", cfg.Server.Port)
+	slog.Info("سويتش Atheer جاهز لاستقبال الطلبات",
+		"port", cfg.Server.Port,
+		"carrierEnabled", cfg.Carrier.Enabled,
+		"carrierPort", cfg.Carrier.Port,
+	)
 
 	// ── 17. انتظار إشارة الإيقاف ──
 	<-ctx.Done()
@@ -304,8 +359,13 @@ func main() {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("فشل الإيقاف المتأنّي", "error", err)
-		os.Exit(1)
+		slog.Error("فشل الإيقاف المتأنّي للخادم العام", "error", err)
+	}
+
+	if carrierSrv != nil {
+		if err := carrierSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("فشل الإيقاف المتأنّي لخادم الاتصالات", "error", err)
+		}
 	}
 
 	// إرسال تنبيه إيقاف

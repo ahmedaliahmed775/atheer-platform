@@ -3,6 +3,9 @@ const nextConfig = {
   // بناء مستقل لـ Docker — يُنتج مجلد standalone يحتوي كل التبعيات
   output: 'standalone',
 
+  // حزم تحتاج ترجمة (ESM → CJS) — xterm وملحقاته
+  transpilePackages: ['@xterm/xterm', '@xterm/addon-fit'],
+
   // عنوان API الخلفي — سويتش Atheer
   async rewrites() {
     return [

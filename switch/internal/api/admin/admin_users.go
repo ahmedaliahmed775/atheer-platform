@@ -62,6 +62,11 @@ type UpdatePayerLimitRequest struct {
 // HandleList — يعالج طلب قائمة المستخدمين المسجّلين
 // GET /admin/v1/users?status=ACTIVE&walletId=jawali&page=1&pageSize=20
 func (h *AdminUsersHandler) HandleList(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج معاملات التصفية
@@ -99,6 +104,11 @@ func (h *AdminUsersHandler) HandleList(w http.ResponseWriter, r *http.Request) {
 // HandleUpdateStatus — يعالج طلب تعديل حالة المستخدم (تعليق/تفعيل)
 // PATCH /admin/v1/users/{id}/status
 func (h *AdminUsersHandler) HandleUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج المعرّف العام من المسار
@@ -179,6 +189,11 @@ func (h *AdminUsersHandler) HandleUpdateStatus(w http.ResponseWriter, r *http.Re
 // HandleUpdatePayerLimit — يعالج طلب تعديل حد الدافع
 // PATCH /admin/v1/users/{id}/limit
 func (h *AdminUsersHandler) HandleUpdatePayerLimit(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج المعرّف العام من المسار

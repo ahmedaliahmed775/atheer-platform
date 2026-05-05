@@ -9,6 +9,7 @@ import (
 
 	"github.com/atheer/switch/internal/adapter"
 	"github.com/atheer/switch/internal/middleware"
+	"github.com/atheer/switch/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -55,6 +56,11 @@ type SystemHealthResponse struct {
 // HandleAdapters — يعالج طلب حالة المحوّلات
 // GET /admin/v1/health/adapters
 func (h *AdminHealthHandler) HandleAdapters(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// فلترة النطاق — WALLET_ADMIN يرى محفظته فقط
@@ -118,6 +124,11 @@ func (h *AdminHealthHandler) HandleAdapters(w http.ResponseWriter, r *http.Reque
 // HandleSystem — يعالج طلب حالة النظام
 // GET /admin/v1/health/system
 func (h *AdminHealthHandler) HandleSystem(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// فحص قاعدة البيانات

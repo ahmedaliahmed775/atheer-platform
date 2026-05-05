@@ -80,6 +80,11 @@ type LatencyResponse struct {
 // HandleSummary — يعالج طلب ملخص الأداء
 // GET /admin/v1/analytics/summary?period=24h
 func (h *AdminAnalyticsHandler) HandleSummary(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// استخراج الفترة من الاستعلام
@@ -139,6 +144,11 @@ func (h *AdminAnalyticsHandler) HandleSummary(w http.ResponseWriter, r *http.Req
 // HandleVolume — يعالج طلب حجم المعاملات
 // GET /admin/v1/analytics/volume?period=7d&group=day
 func (h *AdminAnalyticsHandler) HandleVolume(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	period := r.URL.Query().Get("period")
@@ -189,6 +199,11 @@ func (h *AdminAnalyticsHandler) HandleVolume(w http.ResponseWriter, r *http.Requ
 // HandleErrors — يعالج طلب تحليل الأخطاء
 // GET /admin/v1/analytics/errors?period=24h
 func (h *AdminAnalyticsHandler) HandleErrors(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	ctx := r.Context()
 
 	period := r.URL.Query().Get("period")
@@ -215,6 +230,11 @@ func (h *AdminAnalyticsHandler) HandleErrors(w http.ResponseWriter, r *http.Requ
 // HandleLatency — يعالج طلب تحليل زمن الاستجابة
 // GET /admin/v1/analytics/latency?period=24h
 func (h *AdminAnalyticsHandler) HandleLatency(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — VIEWER على الأقل
+	if !checkRole(w, r, model.RoleViewer) {
+		return
+	}
+
 	period := r.URL.Query().Get("period")
 	if period == "" {
 		period = "24h"

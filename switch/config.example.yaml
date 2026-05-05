@@ -6,6 +6,13 @@ server:
   read_timeout: 30s
   write_timeout: 30s
 
+# نقطة وصول شبكة الاتصالات — المعاملات من هذه النقطة تُسجّل كمصدر "carrier"
+# شركة الاتصالات لا تفرض رسوم بيانات على مستخدمي Atheer وتأخذ عمولة من المحافظ بدلاً من ذلك
+carrier:
+  enabled: true
+  port: 8081
+  commission_rate: 5  # نسبة العمولة بالألف (5 = 0.5%)
+
 database:
   host: localhost
   port: 5432

@@ -1,4 +1,4 @@
-// الإعدادات — حسابات الداشبورد + إعدادات النظام + الملف الشخصي
+// الإعدادات — اتصال السويتش + حسابات الداشبورد + إعدادات النظام + الملف الشخصي
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { apiGet, apiPost, apiPatch } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, getSwitchUrl, setSwitchUrl, resetSwitchUrl } from "@/lib/api";
 import { hasRole, getUserEmail } from "@/lib/auth";
 
 // ── الأنواع ──
@@ -29,7 +29,219 @@ function formatDate(s: string) {
 }
 
 // ════════════════════════════════════════
-// تبويب 1: حسابات الداشبورد
+// تبويب 1: اتصال السويتش
+// ════════════════════════════════════════
+function SwitchConnectionTab() {
+  const [url, setUrl] = useState("");
+  const [savedUrl, setSavedUrl] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [status, setStatus] = useState<"idle" | "connected" | "failed" | "testing">("idle");
+  const [healthData, setHealthData] = useState<{ status: string; version: string; dbStatus: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // تحميل العنوان المحفوظ عند التحميل
+  useEffect(() => {
+    const current = getSwitchUrl();
+    setUrl(current);
+    setSavedUrl(current);
+  }, []);
+
+  // اختبار الاتصال بالسويتش
+  const testConnection = useCallback(async (testUrl: string) => {
+    setTesting(true);
+    setStatus("testing");
+    setHealthData(null);
+    try {
+      const res = await fetch(`${testUrl}/health`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setHealthData({ status: data.status, version: data.version || "—", dbStatus: data.dbStatus || "—" });
+      setStatus("connected");
+    } catch {
+      setStatus("failed");
+      setHealthData(null);
+    } finally {
+      setTesting(false);
+    }
+  }, []);
+
+  // حفظ العنوان
+  const handleSave = () => {
+    const trimmed = url.replace(/\/+$/, ""); // إزالة الشرطات الأخيرة
+    if (!trimmed) { setMsg("العنوان مطلوب"); return; }
+    try {
+      new URL(trimmed); // التحقق من صحة العنوان
+    } catch {
+      setMsg("العنوان غير صالح — تأكد من أنه يبدأ بـ http:// أو https://");
+      return;
+    }
+    setSwitchUrl(trimmed);
+    setSavedUrl(trimmed);
+    setMsg("تم حفظ العنوان بنجاح — سيُستخدم في جميع الطلبات القادمة");
+    testConnection(trimmed);
+  };
+
+  // إعادة العنوان للقيمة الافتراضية
+  const handleReset = () => {
+    resetSwitchUrl();
+    const defaultUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    setUrl(defaultUrl);
+    setSavedUrl(defaultUrl);
+    setMsg("تم إعادة العنوان للقيمة الافتراضية");
+    testConnection(defaultUrl);
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <h2 className="text-lg font-semibold">اتصال السويتش</h2>
+
+      {/* حقل العنوان */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-sm">عنوان سويتش Atheer</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              عنوان API السويتش (URL)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                dir="ltr"
+                placeholder="http://192.168.1.100:8080"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <button
+                onClick={() => testConnection(url)}
+                disabled={testing || !url}
+                className="shrink-0 rounded-lg border border-border/50 px-4 py-2 text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
+              >
+                {testing ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                    اختبار
+                  </span>
+                ) : (
+                  "اختبار"
+                )}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              العنوان الحالي: <code dir="ltr" className="text-xs bg-muted/50 px-1 rounded">{savedUrl}</code>
+            </p>
+          </div>
+
+          {/* أزرار الحفظ والإعادة */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              className="rounded-lg bg-gradient-to-l from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-600/20"
+            >
+              حفظ العنوان
+            </button>
+            <button
+              onClick={handleReset}
+              className="rounded-lg border border-border/50 px-4 py-2 text-sm font-medium hover:bg-muted/50"
+            >
+              إعادة للقيمة الافتراضية
+            </button>
+          </div>
+
+          {msg && (
+            <div
+              className={`rounded-md px-3 py-2 text-sm ${
+                msg.includes("نجاح")
+                  ? "border border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                  : "border border-red-500/20 bg-red-500/5 text-red-400"
+              }`}
+            >
+              {msg}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* حالة الاتصال */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-sm">حالة الاتصال</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            {/* مؤشر الحالة */}
+            <div
+              className={`h-3 w-3 rounded-full ${
+                status === "connected"
+                  ? "bg-emerald-500 shadow-lg shadow-emerald-500/50"
+                  : status === "failed"
+                  ? "bg-red-500 shadow-lg shadow-red-500/50"
+                  : status === "testing"
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-muted-foreground/30"
+              }`}
+            />
+            <span className="text-sm">
+              {status === "connected"
+                ? "متصل بالسويتش"
+                : status === "failed"
+                ? "فشل الاتصال"
+                : status === "testing"
+                ? "جارٍ الاختبار..."
+                : "لم يتم الاختبار بعد"}
+            </span>
+          </div>
+
+          {/* بيانات فحص الصحة */}
+          {healthData && (
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-border/30 bg-muted/20 p-3">
+              <div>
+                <p className="text-[10px] text-muted-foreground">الحالة</p>
+                <Badge
+                  variant="outline"
+                  className={
+                    healthData.status === "OK"
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : "bg-red-500/10 text-red-400 border-red-500/20"
+                  }
+                >
+                  {healthData.status}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">الإصدار</p>
+                <p className="text-sm font-mono" dir="ltr">
+                  {healthData.version}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">قاعدة البيانات</p>
+                <Badge
+                  variant="outline"
+                  className={
+                    healthData.dbStatus === "OK"
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : "bg-red-500/10 text-red-400 border-red-500/20"
+                  }
+                >
+                  {healthData.dbStatus}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════
+// تبويب 2: حسابات الداشبورد
 // ════════════════════════════════════════
 function AccountsTab() {
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
@@ -278,12 +490,14 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold text-foreground">الإعدادات</h1>
         <p className="text-sm text-muted-foreground">إدارة حسابات الداشبورد وإعدادات النظام</p>
       </div>
-      <Tabs defaultValue="profile" dir="rtl">
+      <Tabs defaultValue="connection" dir="rtl">
         <TabsList className="w-full justify-start">
+          <TabsTrigger value="connection">اتصال السويتش</TabsTrigger>
           <TabsTrigger value="profile">الملف الشخصي</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="accounts">حسابات الداشبورد</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="system">إعدادات النظام</TabsTrigger>}
         </TabsList>
+        <TabsContent value="connection"><SwitchConnectionTab /></TabsContent>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
         {isSuperAdmin && <TabsContent value="accounts"><AccountsTab /></TabsContent>}
         {isSuperAdmin && <TabsContent value="system"><SystemTab /></TabsContent>}

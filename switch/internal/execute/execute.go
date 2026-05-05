@@ -13,6 +13,14 @@ import (
 	"github.com/atheer/switch/internal/model"
 )
 
+// getConnectionSource — يستخرج مصدر الاتصال من السياق
+func getConnectionSource(ctx context.Context) string {
+	if source, ok := ctx.Value(model.ConnectionSourceCtxKey{}).(string); ok && source != "" {
+		return source
+	}
+	return model.SourceInternet
+}
+
 // ExecuteService — خدمة طبقة التنفيذ
 type ExecuteService struct {
 	adapter    model.WalletAdapter   // محوّل المحفظة
@@ -153,6 +161,7 @@ func (e *ExecuteService) Process(ctx context.Context, req *model.TransactionRequ
 		DurationMs:       durationMs,
 		DebitRef:         debitResult.DebitRef,
 		CreditRef:        creditResult.CreditRef,
+		ConnectionSource: getConnectionSource(ctx),
 	}
 
 	if err := e.txRepo.Save(ctx, tx); err != nil {
@@ -202,6 +211,7 @@ func (e *ExecuteService) saveFailedTx(ctx context.Context, req *model.Transactio
 		DurationMs:       durationMs,
 		DebitRef:         debitRef,
 		CreditRef:        creditRef,
+		ConnectionSource: getConnectionSource(ctx),
 	}
 
 	if err := e.txRepo.Save(ctx, tx); err != nil {

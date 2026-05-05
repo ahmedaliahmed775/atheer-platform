@@ -64,6 +64,11 @@ type ReconListResponse struct {
 // HandleRun — يعالج طلب تشغيل التسوية
 // POST /admin/v1/reconciliation/run
 func (h *AdminReconHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	var req RunReconRequest
@@ -148,6 +153,11 @@ func (h *AdminReconHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 // HandleListReports — يعالج طلب قائمة تقارير التسوية
 // GET /admin/v1/reconciliation/reports?walletId=jawali&page=1&pageSize=20
 func (h *AdminReconHandler) HandleListReports(w http.ResponseWriter, r *http.Request) {
+	// التحقق من الصلاحية — ADMIN على الأقل
+	if !checkRole(w, r, model.RoleAdmin) {
+		return
+	}
+
 	ctx := r.Context()
 
 	query := r.URL.Query()

@@ -317,6 +317,21 @@ func writeAdminJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
+// checkRole — يتحقق من صلاحية الدور ويكتب استجابة خطأ إذا لم يكن مصرحاً
+// يُرجع true إذا كان الدور مصرحاً له
+func checkRole(w http.ResponseWriter, r *http.Request, requiredRole string) bool {
+	userRole := middleware.GetAdminRoleFromContext(r.Context())
+	if !model.CanAccess(userRole, requiredRole) {
+		slog.Warn("صلاحية غير كافية", "role", userRole, "required", requiredRole)
+		writeAdminJSON(w, http.StatusForbidden, map[string]string{
+			"errorCode":    model.ErrForbiddenRole,
+			"errorMessage": "ليس لديك صلاحية كافية لهذا الإجراء",
+		})
+		return false
+	}
+	return true
+}
+
 // writeAdminAppError — يكتب استجابة خطأ من AppError
 func writeAdminAppError(w http.ResponseWriter, appErr *model.AppError) {
 	writeAdminJSON(w, appErr.HTTPStatus, map[string]string{
