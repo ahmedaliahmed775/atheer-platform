@@ -1,4 +1,5 @@
 // أنواع البيانات الأساسية — يُرجى الرجوع إلى SPEC §1 و§3 و§4 و§6
+// جميع أسماء الحقول بصيغة camelCase عبر json tags لتوافق مع العقد الموحد (OpenAPI)
 package model
 
 import (
@@ -10,61 +11,64 @@ import (
 
 // PaymentToken — التوكن المُستقبَل من جهاز الدافع عبر NFC
 type PaymentToken struct {
-	PublicId  string // المعرّف العام للدافع مثل usr_abc123
-	DeviceId  string // معرّف الجهاز مثل dev_456
-	Counter   int64  // عداد المعاملات (رقم تصاعدي)
-	Timestamp int64  // الطابع الزمني بالثواني (Unix)
-	HMAC      string // توقيع HMAC-SHA256 بصيغة base64
+	PublicId  string `json:"publicId"`  // المعرّف العام للدافع مثل usr_abc123
+	DeviceId  string `json:"deviceId"`  // معرّف الجهاز مثل dev_456
+	Counter   int64  `json:"counter"`   // عداد المعاملات (رقم تصاعدي)
+	Timestamp int64  `json:"timestamp"` // الطابع الزمني بالثواني (Unix)
+	HMAC      string `json:"hmac"`      // توقيع HMAC-SHA256 بصيغة base64
 }
 
 // MerchantData — بيانات التاجر المُرسلة من SDK التاجر
 type MerchantData struct {
-	MerchantId       string // معرّف التاجر (رقم الحساب)
-	MerchantWalletId string // معرّف محفظة التاجر مثل jawali
-	Amount           int64  // المبلغ بالوحدة الصغرى (لا float)
-	Currency         string // العملة مثل YER
-	AccessToken      string // رمز وصول التاجر للمصادقة
+	MerchantId       string `json:"merchantId"`       // معرّف التاجر (رقم الحساب)
+	MerchantWalletId string `json:"merchantWalletId"` // معرّف محفظة التاجر مثل jawali
+	Amount           int64  `json:"amount"`           // المبلغ بالوحدة الصغرى (لا float)
+	Currency         string `json:"currency"`         // العملة مثل YER
+	AccessToken      string `json:"accessToken"`      // رمز وصول التاجر للمصادقة
 }
 
 // --- طلب واستجابة المعاملة ---
 
 // TransactionRequest — طلب المعاملة المُرسل من SDK التاجر
 type TransactionRequest struct {
-	PaymentToken  PaymentToken  // توكن الدفع من NFC
-	MerchantData  MerchantData  // بيانات التاجر
-	Timestamp     int64         // الطابع الزمني للطلب بالثواني (Unix)
+	PaymentToken  PaymentToken  `json:"paymentToken"`  // توكن الدفع من NFC
+	MerchantData  MerchantData  `json:"merchantData"`  // بيانات التاجر
+	Timestamp     int64         `json:"timestamp"`     // الطابع الزمني للطلب بالثواني (Unix)
 }
 
 // TransactionResponse — استجابة المعاملة المُعادة للتاجر
 type TransactionResponse struct {
-	TransactionId    string // معرّف المعاملة (UUID)
-	Status           string // حالة المعاملة: SUCCESS أو FAILED
-	ErrorCode        string // رمز الخطأ إن وُجد مثل HMAC_MISMATCH
-	ErrorMessage     string // رسالة الخطأ
-	LastValidCounter int64  // آخر عداد صالح
-	Timestamp        int64  // الطابع الزمني للاستجابة بالثواني (Unix)
+	TransactionId    string `json:"transactionId"`    // معرّف المعاملة (UUID)
+	Status           string `json:"status"`           // حالة المعاملة: SUCCESS أو FAILED
+	ErrorCode        string `json:"errorCode"`        // رمز الخطأ إن وُجد مثل HMAC_MISMATCH
+	ErrorMessage     string `json:"errorMessage"`     // رسالة الخطأ
+	LastValidCounter int64  `json:"lastValidCounter"` // آخر عداد صالح
+	Timestamp        int64  `json:"timestamp"`        // الطابع الزمني للاستجابة بالثواني (Unix)
 }
 
 // --- التسجيل (Enrollment) ---
 
 // EnrollRequest — طلب تسجيل جهاز دافع جديد
+// الحقول الاختيارية (omitempty) يرسلها الـ SDK عند توفرها فقط
 type EnrollRequest struct {
-	WalletId    string // معرّف المحفظة مثل jawali
-	WalletToken string // رمز المصادقة من خادم المحفظة
-	UserType    string // نوع المستخدم: P (دافع) أو M (تاجر)
-	DeviceId    string // معرّف الجهاز
-	PublicKey   string // المفتاح العام بصيغة base64
-	Attestation string // شهادة التوثيق بصيغة base64
+	WalletId             string   `json:"walletId"`                       // معرّف المحفظة مثل jawali
+	WalletToken          string   `json:"walletToken"`                    // رمز المصادقة من خادم المحفظة
+	DeviceId             string   `json:"deviceId"`                       // معرّف الجهاز (64 حرف hex)
+	UserType             string   `json:"userType"`                       // نوع المستخدم: P (دافع) أو M (تاجر)
+	PublicKey            string   `json:"publicKey,omitempty"`            // المفتاح العام من TEE بصيغة base64
+	AttestationPublicKey string   `json:"attestationPublicKey,omitempty"` // مفتاح شهادة التوثيق ECDSA P-256 بصيغة base64
+	AttestationCert      []string `json:"attestationCert,omitempty"`      // سلسلة شهادات التوثيق بصيغة base64
+	PlayIntegrityToken   string   `json:"playIntegrityToken,omitempty"`   // رمز Google Play Integrity
 }
 
 // EnrollResponse — استجابة التسجيل
 type EnrollResponse struct {
-	PublicId         string // المعرّف العام المُنشأ مثل usr_abc123
-	EncryptedSeed    string // البذرة المشفّرة بصيغة base64
-	PayerLimit       int64  // حد الدافع الافتراضي بالوحدة الصغرى
-	MaxPayerLimit    int64  // الحد الأقصى للدافع بالوحدة الصغرى
-	AttestationLevel string // مستوى التوثيق: TEE أو STRONGBOX أو SOFTWARE
-	Status           string // الحالة: ACTIVE
+	PublicId         string `json:"publicId"`         // المعرّف العام المُنشأ مثل usr_abc123
+	EncryptedSeed    string `json:"encryptedSeed"`    // البذرة المشفّرة بصيغة base64
+	PayerLimit       int64  `json:"payerLimit"`       // حد الدافع الافتراضي بالوحدة الصغرى
+	MaxPayerLimit    int64  `json:"maxPayerLimit"`    // الحد الأقصى للدافع بالوحدة الصغرى
+	AttestationLevel string `json:"attestationLevel"` // مستوى التوثيق: TEE أو STRONGBOX أو SOFTWARE
+	Status           string `json:"status"`           // الحالة: ACTIVE
 }
 
 // --- نتائج طبقات المعالجة ---
@@ -81,7 +85,7 @@ type GateResult struct {
 
 // VerifyResult — نتيجة طبقة التحقق (VERIFY)
 type VerifyResult struct {
-	PayerWalletId   string // معرّف محفظة الدافع
+	PayerWalletId    string // معرّف محفظة الدافع
 	MerchantWalletId string // معرّف محفظة التاجر
 	Amount          int64  // المبلغ بالوحدة الصغرى
 	Currency        string // العملة
@@ -125,46 +129,46 @@ type WalletConfig struct {
 
 // DebitParams — معاملات الخصم من محفظة الدافع
 type DebitParams struct {
-	WalletId      string // معرّف المحفظة
-	AccountRef    string // مرجع الحساب (معرّف الدافع)
-	Amount        int64  // المبلغ بالوحدة الصغرى
-	Currency      string // العملة
-	IdempotencyKey string // مفتاح عدم التكرار
+	WalletId       string `json:"walletId"`
+	AccountRef     string `json:"accountRef"`
+	Amount         int64  `json:"amount"`
+	Currency       string `json:"currency"`
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 
 // CreditParams — معاملات الإيداع في محفظة التاجر
 type CreditParams struct {
-	WalletId      string // معرّف المحفظة
-	AccountRef    string // مرجع الحساب (معرّف التاجر)
-	Amount        int64  // المبلغ بالوحدة الصغرى
-	Currency      string // العملة
-	IdempotencyKey string // مفتاح عدم التكرار
+	WalletId       string `json:"walletId"`
+	AccountRef     string `json:"accountRef"`
+	Amount         int64  `json:"amount"`
+	Currency       string `json:"currency"`
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 
 // DebitResult — نتيجة الخصم
 type DebitResult struct {
-	DebitRef string // مرجع عملية الخصم
-	Status   string // حالة العملية
+	DebitRef string `json:"debitRef"`
+	Status   string `json:"status"`
 }
 
 // CreditResult — نتيجة الإيداع
 type CreditResult struct {
-	CreditRef string // مرجع عملية الإيداع
-	Status    string // حالة العملية
+	CreditRef string `json:"creditRef"`
+	Status    string `json:"status"`
 }
 
 // --- محوّل المحافظ — واجهة موحّدة (§6) ---
 
 // ReverseResult — نتيجة عكس الخصم (تعويض)
 type ReverseResult struct {
-	ReverseRef string // مرجع عملية العكس
-	Status     string // حالة العملية
+	ReverseRef string `json:"reverseRef"`
+	Status     string `json:"status"`
 }
 
 // TxStatus — حالة المعاملة في المحفظة
 type TxStatus struct {
-	Ref    string // مرجع المعاملة
-	Status string // حالة المعاملة
+	Ref    string `json:"ref"`
+	Status string `json:"status"`
 }
 
 // WalletAdapter — واجهة محوّل المحفظة (§6)
@@ -196,22 +200,22 @@ type ConnectionSourceCtxKey struct{}
 
 // Transaction — سجل المعاملة في جدول transactions
 type Transaction struct {
-	ID               int64     `json:"id"`               // المعرّف الداخلي (توليد تلقائي)
-	TransactionId    string    `json:"transactionId"`    // معرّف المعاملة (UUID)
-	PayerPublicId    string    `json:"payerPublicId"`    // المعرّف العام للدافع
-	MerchantId       string    `json:"merchantId"`       // معرّف التاجر
-	PayerWalletId    string    `json:"payerWalletId"`    // معرّف محفظة الدافع
-	MerchantWalletId string    `json:"merchantWalletId"` // معرّف محفظة التاجر
-	Amount           int64     `json:"amount"`           // المبلغ بالوحدة الصغرى
-	Currency         string    `json:"currency"`         // العملة
-	Counter          int64     `json:"counter"`          // عداد المعاملة
-	Status           string    `json:"status"`           // الحالة: SUCCESS أو FAILED أو PENDING أو REVERSED
-	ErrorCode        string    `json:"errorCode"`        // رمز الخطأ إن وُجد
-	DurationMs       int       `json:"durationMs"`       // مدة التنفيذ بالملي ثانية
-	DebitRef         string    `json:"debitRef"`         // مرجع الخصم من المحفظة
-	CreditRef        string    `json:"creditRef"`        // مرجع الإيداع في المحفظة
-	ConnectionSource string    `json:"connectionSource"` // مصدر الاتصال: internet أو carrier
-	CreatedAt        time.Time `json:"createdAt"`        // تاريخ الإنشاء
+	ID               int64     `json:"id"`
+	TransactionId    string    `json:"transactionId"`
+	PayerPublicId    string    `json:"payerPublicId"`
+	MerchantId       string    `json:"merchantId"`
+	PayerWalletId    string    `json:"payerWalletId"`
+	MerchantWalletId string    `json:"merchantWalletId"`
+	Amount           int64     `json:"amount"`
+	Currency         string    `json:"currency"`
+	Counter          int64     `json:"counter"`
+	Status           string    `json:"status"`
+	ErrorCode        string    `json:"errorCode"`
+	DurationMs       int       `json:"durationMs"`
+	DebitRef         string    `json:"debitRef"`
+	CreditRef        string    `json:"creditRef"`
+	ConnectionSource string    `json:"connectionSource"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 // TransactionFilters — معاملات التصفية لقائمة المعاملات
@@ -229,21 +233,21 @@ type TransactionFilters struct {
 
 // CarrierCommissionStats — إحصائيات عمولات شركة الاتصالات لكل محفظة
 type CarrierCommissionStats struct {
-	WalletId       string // معرّف المحفظة
-	TotalTxCount   int    // إجمالي عدد المعاملات عبر شبكة الاتصالات
-	TotalAmount    int64  // إجمالي المبلغ بالوحدة الصغرى
-	SuccessCount   int    // عدد المعاملات الناجحة
-	FailedCount    int    // عدد المعاملات الفاشلة
-	CommissionRate int64  // نسبة العمولة بالألف (مثلاً 5 = 0.5%)
-	CommissionDue  int64  // العمولة المستحقة بالوحدة الصغرى
+	WalletId       string `json:"walletId"`
+	TotalTxCount   int    `json:"totalTxCount"`
+	TotalAmount    int64  `json:"totalAmount"`
+	SuccessCount   int    `json:"successCount"`
+	FailedCount    int    `json:"failedCount"`
+	CommissionRate int64  `json:"commissionRate"`
+	CommissionDue  int64  `json:"commissionDue"`
 }
 
 // CarrierCommissionSummary — ملخص إحصائيات العمولات
 type CarrierCommissionSummary struct {
-	Wallets      []CarrierCommissionStats // تفاصيل كل محفظة
-	TotalTxCount int                      // إجمالي المعاملات عبر الاتصالات
-	TotalAmount  int64                    // إجمالي المبلغ
-	TotalDue     int64                    // إجمالي العمولات المستحقة
+	Wallets      []CarrierCommissionStats `json:"wallets"`
+	TotalTxCount int                      `json:"totalTxCount"`
+	TotalAmount  int64                    `json:"totalAmount"`
+	TotalDue     int64                    `json:"totalDue"`
 }
 
 // --- المستخدمون الإداريون (§4) ---
@@ -265,10 +269,10 @@ type AdminUser struct {
 // --- أدوار الإدارة وصلاحياتها ---
 
 const (
-	RoleSuperAdmin = "SUPER_ADMIN" // مدير أعلى — صلاحية كاملة
-	RoleAdmin      = "ADMIN"       // مدير — صلاحية كاملة ما عدا إدارة المديرين
+	RoleSuperAdmin  = "SUPER_ADMIN"   // مدير أعلى — صلاحية كاملة
+	RoleAdmin       = "ADMIN"         // مدير — صلاحية كاملة ما عدا إدارة المديرين
 	RoleWalletAdmin = "WALLET_ADMIN" // مدير محفظة — يرى بيانات محفظته فقط
-	RoleViewer     = "VIEWER"      // مشاهد — قراءة فقط
+	RoleViewer      = "VIEWER"       // مشاهد — قراءة فقط
 )
 
 // CanAccess — يتحقق من أن الدور يملك مستوى الصلاحية المطلوب

@@ -179,7 +179,7 @@ func main() {
 	// ── 11. إنشاء المعالجات ──
 	enrollHandler := api.NewEnrollHandler(payerRepo, walletRepo, kmsInstance)
 	transactionHandler := api.NewTransactionHandler(gateService, verifyService, executeService)
-	syncHandler := api.NewSyncHandler(payerRepo)
+	syncHandler := api.NewSyncHandler(payerRepo, walletRepo)
 	payerLimitHandler := api.NewPayerLimitHandler(payerRepo, walletRepo)
 	unenrollHandler := api.NewUnenrollHandler(payerRepo)
 	healthHandler := api.NewHealthHandler(pool, cfg.Carrier.Enabled)

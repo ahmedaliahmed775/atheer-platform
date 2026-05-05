@@ -1,5 +1,6 @@
 // معالج المزامنة — POST /api/v1/sync
-// يُرجع العداد الحالي وحد الدافع للمستخدم
+// يُرجع العداد الأخير الصالح والحدود الحالية للدافع
+// حسب العقد الموحد (OpenAPI): الحقول lastValidCounter, payerLimit, maxAllowedLimit, status, seedExpiresAt
 package api
 
 import (
@@ -12,25 +13,30 @@ import (
 
 // SyncHandler — معالج مزامنة العداد والحدود
 type SyncHandler struct {
-	payerRepo db.PayerRepo
+	payerRepo  db.PayerRepo
+	walletRepo db.WalletRepo
 }
 
 // NewSyncHandler — ينشئ معالج مزامنة جديد
-func NewSyncHandler(payerRepo db.PayerRepo) *SyncHandler {
-	return &SyncHandler{payerRepo: payerRepo}
+func NewSyncHandler(payerRepo db.PayerRepo, walletRepo db.WalletRepo) *SyncHandler {
+	return &SyncHandler{payerRepo: payerRepo, walletRepo: walletRepo}
 }
 
-// SyncRequest — طلب المزامنة
+// SyncRequest — طلب المزامنة (حسب العقد الموحد)
 type SyncRequest struct {
-	PublicId string `json:"publicId"` // المعرّف العام للدافع
+	PublicId    string `json:"publicId"`              // المعرّف العام للدافع
+	DeviceId    string `json:"deviceId"`              // معرّف الجهاز
+	Timestamp   int64  `json:"timestamp"`             // الطابع الزمني بالثواني (Unix)
+	RequestHmac string `json:"requestHmac,omitempty"` // HMAC اختياري — للمصادقة المتبادلة مستقبلاً
 }
 
-// SyncResponse — استجابة المزامنة
+// SyncResponse — استجابة المزامنة (حسب العقد الموحد)
 type SyncResponse struct {
-	PublicId   string `json:"publicId"`    // المعرّف العام
-	Counter    int64  `json:"counter"`     // العداد الحالي
-	PayerLimit int64  `json:"payerLimit"`  // حد الدافع
-	Status     string `json:"status"`      // حالة السجل
+	LastValidCounter int64  `json:"lastValidCounter"`       // آخر عداد صالح (ليس counter)
+	PayerLimit       int64  `json:"payerLimit"`             // حد الدافع بالوحدة الصغرى
+	MaxAllowedLimit  int64  `json:"maxAllowedLimit"`        // الحد الأقصى المسموح للمحفظة
+	Status           string `json:"status"`                // حالة الحساب: ACTIVE أو SUSPENDED
+	SeedExpiresAt    string `json:"seedExpiresAt,omitempty"` // تاريخ انتهاء صلاحية البذرة (اختياري)
 }
 
 // Handle — يعالج طلب مزامنة العداد والحدود
@@ -47,6 +53,10 @@ func (h *SyncHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "publicId مطلوب")
 		return
 	}
+	if req.DeviceId == "" {
+		writeBadRequest(w, "deviceId مطلوب")
+		return
+	}
 
 	// البحث عن السجل
 	record, err := h.payerRepo.FindByPublicId(ctx, req.PublicId)
@@ -60,13 +70,32 @@ func (h *SyncHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := SyncResponse{
-		PublicId:   record.PublicId,
-		Counter:    record.Counter,
-		PayerLimit: record.PayerLimit,
-		Status:     record.Status,
+	// التحقق من مطابقة الجهاز
+	if record.DeviceId != req.DeviceId {
+		writeErrorWithCode(w, model.ErrDeviceMismatch)
+		return
 	}
 
-	slog.Debug("المزامنة: نجاح", "publicId", req.PublicId, "counter", record.Counter)
+	// البحث عن إعدادات المحفظة لمعرفة الحد الأقصى
+	var maxAllowedLimit int64
+	walletCfg, err := h.walletRepo.FindByWalletId(ctx, record.WalletId)
+	if err != nil || walletCfg == nil {
+		// إذا لم نجد إعدادات المحفظة، نستخدم الحد الأقصى المسجل
+		maxAllowedLimit = record.PayerLimit
+		slog.Warn("المزامنة: لم يتم العثور على إعدادات المحفظة، استخدام حد الدافع كحد أقصى",
+			"walletId", record.WalletId, "error", err)
+	} else {
+		maxAllowedLimit = walletCfg.MaxPayerLimit
+	}
+
+	resp := SyncResponse{
+		LastValidCounter: record.Counter,
+		PayerLimit:       record.PayerLimit,
+		MaxAllowedLimit:  maxAllowedLimit,
+		Status:           record.Status,
+		// SeedExpiresAt يُترك فارغاً حتى يتم تنفيذ آلية انتهاء صلاحية البذرة
+	}
+
+	slog.Debug("المزامنة: نجاح", "publicId", req.PublicId, "lastValidCounter", record.Counter)
 	writeJSON(w, http.StatusOK, resp)
 }

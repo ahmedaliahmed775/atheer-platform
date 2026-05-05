@@ -169,14 +169,18 @@ notifications:
 
 ## 📡 نقاط API
 
-### API العام (مصادقة API Key + accessToken)
-| المسار | الطريقة | الوصف |
-|--------|---------|-------|
-| `/api/v1/transaction` | POST | تنفيذ معاملة دفع |
-| `/api/v1/enroll` | POST | تسجيل جهاز دافع |
-| `/api/v1/unenroll` | POST | إلغاء تسجيل جهاز |
-| `/api/v1/sync` | POST | مزامنة العداد |
-| `/health` | GET | فحص الصحة |
+> **العقد الموحد:** جميع نقاط API العامة تتوافق مع ملف العقد الموحد `atheer-api-contract.yaml` (OpenAPI 3.0).
+> أسماء الحقول بصيغة **camelCase** في الطلبات والاستجابات.
+
+### API العام (مصادقة API Key)
+| المسار | الطريقة | الوصف | حقول الطلب المطلوبة |
+|--------|---------|-------|---------------------|
+| `/api/v1/enroll` | POST | تسجيل جهاز دافع | `walletId`, `walletToken`, `deviceId`, `userType` |
+| `/api/v1/transaction` | POST | تنفيذ معاملة دفع | `paymentToken.*`, `merchantData.*`, `timestamp` |
+| `/api/v1/sync` | POST | مزامنة العداد والحدود | `publicId`, `deviceId`, `timestamp` |
+| `/api/v1/payer-limit` | POST | تحديث حد الدفع | `publicId`, `deviceId`, `newLimit`, `timestamp` |
+| `/api/v1/unenroll` | POST | إلغاء تسجيل جهاز | `publicId`, `deviceId`, `timestamp` |
+| `/health` | GET | فحص الصحة | — |
 
 ### API الإدارة (مصادقة JWT)
 | المسار | الطريقة | الوصف |
@@ -205,3 +209,59 @@ notifications:
 | `/admin/v1/admins` | GET | قائمة المدراء |
 | `/admin/v1/admins` | POST | إضافة مدير |
 | `/admin/v1/admins/:id` | PATCH | تعديل مدير |
+
+### تفصيل استجابات API العام
+
+**Enroll (201):**
+```json
+{
+  "publicId": "usr_abc123def456",
+  "encryptedSeed": "base64-encoded-kms-encrypted-seed",
+  "payerLimit": 5000,
+  "maxPayerLimit": 50000,
+  "attestationLevel": "SOFTWARE",
+  "status": "ACTIVE"
+}
+```
+
+**Transaction (200):**
+```json
+{
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "SUCCESS",
+  "errorCode": "",
+  "errorMessage": "",
+  "lastValidCounter": 43,
+  "timestamp": 1714340401
+}
+```
+
+**Sync (200):**
+```json
+{
+  "lastValidCounter": 42,
+  "payerLimit": 5000,
+  "maxAllowedLimit": 50000,
+  "status": "ACTIVE",
+  "seedExpiresAt": ""
+}
+```
+
+**Payer Limit (200):**
+```json
+{
+  "publicId": "usr_abc123def456",
+  "payerLimit": 10000,
+  "maxAllowedLimit": 50000,
+  "status": "ACTIVE"
+}
+```
+
+**Unenroll (200):**
+```json
+{
+  "publicId": "usr_abc123def456",
+  "status": "UNENROLLED",
+  "message": "تم إلغاء التسجيل بنجاح"
+}
+```

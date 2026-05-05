@@ -188,7 +188,6 @@ func TestEnroll_Success(t *testing.T) {
 		"walletId":    "jawali",
 		"walletToken": "valid-token",
 		"deviceId":    "device-001",
-		"publicKey":   "cHVibGljS2V5",
 		"userType":    "P",
 	})
 
@@ -227,10 +226,10 @@ func TestEnroll_MissingFields(t *testing.T) {
 		name string
 		body map[string]string
 	}{
-		{"بدون walletId", map[string]string{"walletToken": "t", "deviceId": "d", "publicKey": "k", "userType": "P"}},
-		{"بدون deviceId", map[string]string{"walletId": "jawali", "walletToken": "t", "publicKey": "k", "userType": "P"}},
-		{"بدون publicKey", map[string]string{"walletId": "jawali", "walletToken": "t", "deviceId": "d", "userType": "P"}},
-		{"userType غير صالح", map[string]string{"walletId": "jawali", "walletToken": "t", "deviceId": "d", "publicKey": "k", "userType": "X"}},
+		{"بدون walletId", map[string]string{"walletToken": "t", "deviceId": "d", "userType": "P"}},
+		{"بدون walletToken", map[string]string{"walletId": "jawali", "deviceId": "d", "userType": "P"}},
+		{"بدون deviceId", map[string]string{"walletId": "jawali", "walletToken": "t", "userType": "P"}},
+		{"userType غير صالح", map[string]string{"walletId": "jawali", "walletToken": "t", "deviceId": "d", "userType": "X"}},
 	}
 
 	for _, tc := range cases {
@@ -251,7 +250,7 @@ func TestEnroll_WalletNotFound(t *testing.T) {
 
 	body := makeJSON(t, map[string]string{
 		"walletId": "unknown_wallet", "walletToken": "t",
-		"deviceId": "d", "publicKey": "k", "userType": "P",
+		"deviceId": "d", "userType": "P",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/enroll", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -273,7 +272,7 @@ func TestEnroll_WalletInactive(t *testing.T) {
 
 	body := makeJSON(t, map[string]string{
 		"walletId": "floosak", "walletToken": "t",
-		"deviceId": "d", "publicKey": "k", "userType": "P",
+		"deviceId": "d", "userType": "P",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/enroll", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -296,7 +295,7 @@ func TestEnroll_DuplicateDevice(t *testing.T) {
 
 	body := map[string]string{
 		"walletId": "jawali", "walletToken": "t",
-		"deviceId": "same-device", "publicKey": "k", "userType": "P",
+		"deviceId": "same-device", "userType": "P",
 	}
 
 	// التسجيل الأول — يجب أن ينجح

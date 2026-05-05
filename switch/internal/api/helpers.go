@@ -2,51 +2,53 @@
 package api
 
 import (
-	"encoding/json"
-	"log/slog"
-	"net/http"
+        "encoding/json"
+        "log/slog"
+        "net/http"
 
-	"github.com/atheer/switch/internal/model"
+        "github.com/atheer/switch/internal/model"
 )
 
 // writeJSON — يكتب استجابة JSON مع حالة HTTP المحددة
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if data != nil {
-		if err := json.NewEncoder(w).Encode(data); err != nil {
-			slog.Error("API: فشل كتابة JSON", "error", err)
-		}
-	}
+        w.Header().Set("Content-Type", "application/json; charset=utf-8")
+        w.WriteHeader(status)
+        if data != nil {
+                if err := json.NewEncoder(w).Encode(data); err != nil {
+                        slog.Error("API: فشل كتابة JSON", "error", err)
+                }
+        }
 }
 
 // readJSON — يقرأ ويحلل JSON من جسم الطلب
+// ملاحظة: لا نستخدم DisallowUnknownFields() لتوافق أفضل مع العقد الموحد —
+// الـ SDK قد يرسل حقولاً إضافية (مثل attestationPublicKey, requestHmac)
+// والسويتش يجب أن يتجاهل ما لا يعرفه بدل رفض الطلب بالكامل.
 func readJSON(r *http.Request, dst interface{}) error {
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields() // رفض الحقول غير المعروفة
-	if err := decoder.Decode(dst); err != nil {
-		return err
-	}
-	return nil
+        decoder := json.NewDecoder(r.Body)
+        if err := decoder.Decode(dst); err != nil {
+                return err
+        }
+        return nil
 }
 
 // writeError — يكتب استجابة خطأ بصيغة JSON من AppError
 func writeError(w http.ResponseWriter, appErr *model.AppError) {
-	resp := map[string]interface{}{
-		"errorCode":    appErr.Code,
-		"errorMessage": appErr.Message,
-	}
-	writeJSON(w, appErr.HTTPStatus, resp)
+        resp := map[string]interface{}{
+                "errorCode":    appErr.Code,
+                "errorMessage": appErr.Message,
+        }
+        writeJSON(w, appErr.HTTPStatus, resp)
 }
 
 // writeErrorWithCode — يكتب استجابة خطأ من رمز الخطأ
 func writeErrorWithCode(w http.ResponseWriter, code string) {
-	appErr := model.NewAppError(code)
-	writeError(w, appErr)
+        appErr := model.NewAppError(code)
+        writeError(w, appErr)
 }
 
 // writeBadRequest — يكتب استجابة خطأ 400 مع رسالة مخصصة
 func writeBadRequest(w http.ResponseWriter, message string) {
-	appErr := model.NewAppErrorWithMessage(model.ErrInvalidRequest, message)
-	writeError(w, appErr)
+        appErr := model.NewAppErrorWithMessage(model.ErrInvalidRequest, message)
+        writeError(w, appErr)
 }

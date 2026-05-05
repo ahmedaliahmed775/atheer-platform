@@ -1,5 +1,6 @@
 // معالج إلغاء التسجيل — POST /api/v1/unenroll
 // يحذف سجل الدافع من قاعدة البيانات (إلغاء تسجيل الجهاز)
+// حسب العقد الموحد: الطلب يحتوي timestamp + requestHmac، الاستجابة تحتوي message
 package api
 
 import (
@@ -20,16 +21,19 @@ func NewUnenrollHandler(payerRepo db.PayerRepo) *UnenrollHandler {
 	return &UnenrollHandler{payerRepo: payerRepo}
 }
 
-// UnenrollRequest — طلب إلغاء التسجيل
+// UnenrollRequest — طلب إلغاء التسجيل (حسب العقد الموحد)
 type UnenrollRequest struct {
-	PublicId string `json:"publicId"` // المعرّف العام للدافع
-	DeviceId string `json:"deviceId"` // معرّف الجهاز
+	PublicId    string `json:"publicId"`              // المعرّف العام للدافع
+	DeviceId    string `json:"deviceId"`              // معرّف الجهاز
+	Timestamp   int64  `json:"timestamp"`             // الطابع الزمني بالثواني (Unix)
+	RequestHmac string `json:"requestHmac,omitempty"` // HMAC اختياري — للمصادقة المتبادلة مستقبلاً
 }
 
-// UnenrollResponse — استجابة إلغاء التسجيل
+// UnenrollResponse — استجابة إلغاء التسجيل (حسب العقد الموحد)
 type UnenrollResponse struct {
 	PublicId string `json:"publicId"` // المعرّف العام
-	Status   string `json:"status"`   // الحالة: UNENROLLED
+	Status   string `json:"status"`  // الحالة: UNENROLLED
+	Message  string `json:"message"` // رسالة تأكيد
 }
 
 // Handle — يعالج طلب إلغاء التسجيل
@@ -46,6 +50,10 @@ func (h *UnenrollHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "publicId مطلوب")
 		return
 	}
+	if req.DeviceId == "" {
+		writeBadRequest(w, "deviceId مطلوب")
+		return
+	}
 
 	// التحقق من وجود السجل
 	record, err := h.payerRepo.FindByPublicId(ctx, req.PublicId)
@@ -60,7 +68,7 @@ func (h *UnenrollHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// التحقق من مطابقة الجهاز (أمان إضافي)
-	if req.DeviceId != "" && record.DeviceId != req.DeviceId {
+	if record.DeviceId != req.DeviceId {
 		writeErrorWithCode(w, model.ErrDeviceMismatch)
 		return
 	}
@@ -75,6 +83,7 @@ func (h *UnenrollHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	resp := UnenrollResponse{
 		PublicId: req.PublicId,
 		Status:   "UNENROLLED",
+		Message:  "تم إلغاء التسجيل بنجاح",
 	}
 
 	slog.Info("إلغاء التسجيل: نجاح", "publicId", req.PublicId)

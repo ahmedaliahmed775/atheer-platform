@@ -1,5 +1,6 @@
 // معالج تعديل حد الدافع — POST /api/v1/payer-limit
 // يسمح بتعديل حد الدافع بشرط ألا يتجاوز الحد الأقصى
+// حسب العقد الموحد: الطلب يرسل newLimit وليس payerLimit
 package api
 
 import (
@@ -24,17 +25,21 @@ func NewPayerLimitHandler(payerRepo db.PayerRepo, walletRepo db.WalletRepo) *Pay
 	}
 }
 
-// PayerLimitRequest — طلب تعديل حد الدافع
+// PayerLimitRequest — طلب تعديل حد الدافع (حسب العقد الموحد)
 type PayerLimitRequest struct {
-	PublicId   string `json:"publicId"`   // المعرّف العام للدافع
-	PayerLimit int64  `json:"payerLimit"` // الحد الجديد بالوحدة الصغرى
+	PublicId    string `json:"publicId"`              // المعرّف العام للدافع
+	DeviceId    string `json:"deviceId"`              // معرّف الجهاز
+	NewLimit    int64  `json:"newLimit"`              // الحد الجديد بالوحدة الصغرى
+	Timestamp   int64  `json:"timestamp"`             // الطابع الزمني بالثواني (Unix)
+	RequestHmac string `json:"requestHmac,omitempty"` // HMAC اختياري — للمصادقة المتبادلة مستقبلاً
 }
 
-// PayerLimitResponse — استجابة تعديل حد الدافع
+// PayerLimitResponse — استجابة تعديل حد الدافع (حسب العقد الموحد)
 type PayerLimitResponse struct {
-	PublicId      string `json:"publicId"`      // المعرّف العام
-	PayerLimit    int64  `json:"payerLimit"`     // الحد الجديد
-	MaxPayerLimit int64  `json:"maxPayerLimit"`  // الحد الأقصى المسموح
+	PublicId        string `json:"publicId"`        // المعرّف العام
+	PayerLimit      int64  `json:"payerLimit"`      // الحد الجديد بعد التحديث
+	MaxAllowedLimit int64  `json:"maxAllowedLimit"` // الحد الأقصى المسموح للمحفظة
+	Status          string `json:"status"`          // حالة الحساب: ACTIVE
 }
 
 // Handle — يعالج طلب تعديل حد الدافع
@@ -51,8 +56,12 @@ func (h *PayerLimitHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "publicId مطلوب")
 		return
 	}
-	if req.PayerLimit <= 0 {
-		writeBadRequest(w, "payerLimit يجب أن يكون أكبر من صفر")
+	if req.DeviceId == "" {
+		writeBadRequest(w, "deviceId مطلوب")
+		return
+	}
+	if req.NewLimit <= 0 {
+		writeBadRequest(w, "newLimit يجب أن يكون أكبر من صفر")
 		return
 	}
 
@@ -65,6 +74,12 @@ func (h *PayerLimitHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if record == nil {
 		writeErrorWithCode(w, model.ErrUnknownPayer)
+		return
+	}
+
+	// التحقق من مطابقة الجهاز
+	if record.DeviceId != req.DeviceId {
+		writeErrorWithCode(w, model.ErrDeviceMismatch)
 		return
 	}
 
@@ -81,28 +96,29 @@ func (h *PayerLimitHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// التحقق من أن الحد الجديد لا يتجاوز الحد الأقصى
-	if req.PayerLimit > walletCfg.MaxPayerLimit {
-		writeBadRequest(w, "payerLimit يتجاوز الحد الأقصى المسموح")
+	if req.NewLimit > walletCfg.MaxPayerLimit {
+		writeErrorWithCode(w, model.ErrPayerLimitExceeded)
 		return
 	}
 
 	// تحديث الحد
-	if err := h.payerRepo.UpdatePayerLimit(ctx, req.PublicId, req.PayerLimit); err != nil {
+	if err := h.payerRepo.UpdatePayerLimit(ctx, req.PublicId, req.NewLimit); err != nil {
 		slog.Error("حد الدافع: فشل التحديث", "publicId", req.PublicId, "error", err)
 		http.Error(w, "خطأ داخلي", http.StatusInternalServerError)
 		return
 	}
 
 	resp := PayerLimitResponse{
-		PublicId:      req.PublicId,
-		PayerLimit:    req.PayerLimit,
-		MaxPayerLimit: walletCfg.MaxPayerLimit,
+		PublicId:        req.PublicId,
+		PayerLimit:      req.NewLimit,
+		MaxAllowedLimit: walletCfg.MaxPayerLimit,
+		Status:          record.Status,
 	}
 
 	slog.Info("حد الدافع: تم التحديث",
 		"publicId", req.PublicId,
-		"newLimit", req.PayerLimit,
-		"maxLimit", walletCfg.MaxPayerLimit,
+		"newLimit", req.NewLimit,
+		"maxAllowedLimit", walletCfg.MaxPayerLimit,
 	)
 	writeJSON(w, http.StatusOK, resp)
 }
