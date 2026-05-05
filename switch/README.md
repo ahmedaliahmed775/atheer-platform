@@ -216,7 +216,7 @@ notifications:
 ```json
 {
   "publicId": "usr_abc123def456",
-  "encryptedSeed": "base64-encoded-kms-encrypted-seed",
+  "encryptedSeed": "base64-encoded-tee-encrypted-seed",
   "payerLimit": 5000,
   "maxPayerLimit": 50000,
   "attestationLevel": "SOFTWARE",
@@ -241,9 +241,8 @@ notifications:
 {
   "lastValidCounter": 42,
   "payerLimit": 5000,
-  "maxAllowedLimit": 50000,
-  "status": "ACTIVE",
-  "seedExpiresAt": ""
+  "maxPayerLimit": 50000,
+  "status": "ACTIVE"
 }
 ```
 
@@ -252,7 +251,7 @@ notifications:
 {
   "publicId": "usr_abc123def456",
   "payerLimit": 10000,
-  "maxAllowedLimit": 50000,
+  "maxPayerLimit": 50000,
   "status": "ACTIVE"
 }
 ```

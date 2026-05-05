@@ -1,5 +1,5 @@
--- إنشاء جدول سجلات الدافعين/التجار
--- يُرجى الرجوع إلى SPEC §4
+-- إنشاء جدول سجلات الدافعين
+-- يُرجى الرجوع إلى SPEC §4 — التاجر لا يُسجّل في Atheer
 CREATE TABLE switch_records (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     public_id         VARCHAR(36) NOT NULL,
@@ -15,8 +15,8 @@ CREATE TABLE switch_records (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_public_id UNIQUE (public_id),
     CONSTRAINT uq_device_id UNIQUE (device_id),
-    CONSTRAINT chk_user_type CHECK (user_type IN ('P', 'M')),
-    CONSTRAINT chk_status CHECK (status IN ('ACTIVE', 'SUSPENDED'))
+    CONSTRAINT chk_user_type CHECK (user_type = 'P'),
+    CONSTRAINT chk_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'REVOKED'))
 );
 
 -- فهارس لتسريع البحث
