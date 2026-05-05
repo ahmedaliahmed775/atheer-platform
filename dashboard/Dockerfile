@@ -12,6 +12,7 @@ COPY . .
 
 # بناء التطبيق للإنتاج
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=768
 RUN npm run build
 
 # ── المرحلة الثانية: صورة التشغيل (Node.js runtime) ──
