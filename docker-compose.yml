@@ -3,8 +3,6 @@
 # يُشغّل: Nginx + Switch (Go) + Dashboard (Next.js) + PostgreSQL
 # ════════════════════════════════════════════════════
 
-version: "3.9"
-
 services:
   # ── قاعدة البيانات ──
   postgres:
@@ -74,6 +72,7 @@ services:
         condition: service_healthy
     environment:
       - NEXT_PUBLIC_API_URL=http://atheer-switch:8080
+      - HOSTNAME=0.0.0.0
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:3000/health" ]
       interval: 30s
