@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /** المسارات التي لا تحتاج مصادقة */
-const PUBLIC_PATHS = ["/login", "/api"];
+const PUBLIC_PATHS = ["/login", "/api", "/health"];
 
 /** المسارات الثابتة */
 const STATIC_PATHS = ["/_next", "/favicon.ico", "/fonts", "/images"];

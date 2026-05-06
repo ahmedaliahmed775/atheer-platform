@@ -10,6 +10,11 @@ RUN npm install --legacy-peer-deps
 # نسخ الكود المصدري
 COPY . .
 
+# عنوان API الخلفي — يُمرَّر وقت البناء (build-time)
+# متغيرات NEXT_PUBLIC_* تُدمج في الكود عند البناء وليس عند التشغيل
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # بناء التطبيق للإنتاج
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=768

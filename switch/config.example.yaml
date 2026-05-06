@@ -14,7 +14,7 @@ carrier:
   commission_rate: 5  # نسبة العمولة بالألف (5 = 0.5%)
 
 database:
-  host: localhost
+  host: ${DB_HOST:-localhost}  # localhost للتطوير، postgres لـ Docker
   port: 5432
   name: atheer
   user: atheer
@@ -29,6 +29,7 @@ cors:
     - http://127.0.0.1:3000
     # أضف نطاق الإنتاج هنا، مثلاً:
     # - https://atheer.yourdomain.com
+    # - http://YOUR_SERVER_IP
 
 security:
   timestamp_tolerance: 60
