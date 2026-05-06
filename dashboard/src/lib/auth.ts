@@ -30,16 +30,21 @@ interface LoginResponse {
 
 /** مفتاح تخزين عنوان السويتش */
 const SWITCH_URL_KEY = "atheer_switch_url";
+/** القيمة الافتراضية — SSR فقط (عنوان Docker الداخلي) */
 const DEFAULT_SWITCH_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 /** الحصول على عنوان السويتش — يُقرأ من localStorage */
 function getSwitchUrl(): string {
+  // SSR — استخدام عنوان Docker الداخلي مباشرة
   if (typeof window === "undefined") return DEFAULT_SWITCH_URL;
   try {
-    return localStorage.getItem(SWITCH_URL_KEY) || DEFAULT_SWITCH_URL;
+    const stored = localStorage.getItem(SWITCH_URL_KEY);
+    if (stored) return stored;
   } catch {
-    return DEFAULT_SWITCH_URL;
+    // تجاهل أخطاء التخزين
   }
+  // المتصفح — استخدام المسار النسبي عبر Nginx (يُزيل بادئة /api/ ويُوجّه للسويتش)
+  return "/api";
 }
 
 // ── عمليات التخزين ──

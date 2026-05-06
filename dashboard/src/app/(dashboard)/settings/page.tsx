@@ -72,11 +72,15 @@ function SwitchConnectionTab() {
   const handleSave = () => {
     const trimmed = url.replace(/\/+$/, ""); // إزالة الشرطات الأخيرة
     if (!trimmed) { setMsg("العنوان مطلوب"); return; }
-    try {
-      new URL(trimmed); // التحقق من صحة العنوان
-    } catch {
-      setMsg("العنوان غير صالح — تأكد من أنه يبدأ بـ http:// أو https://");
-      return;
+    // السماح بالمسارات النسبية (مثل /api) أو العناوين الكاملة
+    const isRelative = trimmed.startsWith("/");
+    if (!isRelative) {
+      try {
+        new URL(trimmed); // التحقق من صحة العنوان الكامل
+      } catch {
+        setMsg("العنوان غير صالح — تأكد من أنه يبدأ بـ http:// أو https:// أو /");
+        return;
+      }
     }
     setSwitchUrl(trimmed);
     setSavedUrl(trimmed);
@@ -87,7 +91,8 @@ function SwitchConnectionTab() {
   // إعادة العنوان للقيمة الافتراضية
   const handleReset = () => {
     resetSwitchUrl();
-    const defaultUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    // المتصفح يستخدم /api كمسار نسبي عبر Nginx
+    const defaultUrl = "/api";
     setUrl(defaultUrl);
     setSavedUrl(defaultUrl);
     setMsg("تم إعادة العنوان للقيمة الافتراضية");
@@ -155,11 +160,10 @@ function SwitchConnectionTab() {
 
           {msg && (
             <div
-              className={`rounded-md px-3 py-2 text-sm ${
-                msg.includes("نجاح")
+              className={`rounded-md px-3 py-2 text-sm ${msg.includes("نجاح")
                   ? "border border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
                   : "border border-red-500/20 bg-red-500/5 text-red-400"
-              }`}
+                }`}
             >
               {msg}
             </div>
@@ -176,24 +180,23 @@ function SwitchConnectionTab() {
           <div className="flex items-center gap-3">
             {/* مؤشر الحالة */}
             <div
-              className={`h-3 w-3 rounded-full ${
-                status === "connected"
+              className={`h-3 w-3 rounded-full ${status === "connected"
                   ? "bg-emerald-500 shadow-lg shadow-emerald-500/50"
                   : status === "failed"
-                  ? "bg-red-500 shadow-lg shadow-red-500/50"
-                  : status === "testing"
-                  ? "bg-yellow-500 animate-pulse"
-                  : "bg-muted-foreground/30"
-              }`}
+                    ? "bg-red-500 shadow-lg shadow-red-500/50"
+                    : status === "testing"
+                      ? "bg-yellow-500 animate-pulse"
+                      : "bg-muted-foreground/30"
+                }`}
             />
             <span className="text-sm">
               {status === "connected"
                 ? "متصل بالسويتش"
                 : status === "failed"
-                ? "فشل الاتصال"
-                : status === "testing"
-                ? "جارٍ الاختبار..."
-                : "لم يتم الاختبار بعد"}
+                  ? "فشل الاتصال"
+                  : status === "testing"
+                    ? "جارٍ الاختبار..."
+                    : "لم يتم الاختبار بعد"}
             </span>
           </div>
 
@@ -270,7 +273,7 @@ function AccountsTab() {
   };
 
   const toggleActive = async (a: AdminAccount) => {
-    try { await apiPatch(`/admin/v1/admins/${a.id}`, { isActive: !a.isActive }); fetch(); } catch {}
+    try { await apiPatch(`/admin/v1/admins/${a.id}`, { isActive: !a.isActive }); fetch(); } catch { }
   };
 
   return (
@@ -279,7 +282,7 @@ function AccountsTab() {
         <h2 className="text-lg font-semibold">حسابات الداشبورد</h2>
         <button onClick={() => { setForm({ email: "", password: "", role: "VIEWER", scope: "global" }); setFormError(null); setAddOpen(true); }}
           className="flex items-center gap-2 rounded-lg bg-gradient-to-l from-blue-600 to-violet-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-600/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
           إضافة مستخدم
         </button>
       </div>
@@ -298,7 +301,7 @@ function AccountsTab() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center"><div className="flex justify-center gap-2"><div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"/>جارٍ التحميل...</div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-32 text-center"><div className="flex justify-center gap-2"><div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />جارٍ التحميل...</div></TableCell></TableRow>
               ) : admins.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">لا يوجد حسابات</TableCell></TableRow>
               ) : admins.map(a => (
@@ -324,11 +327,11 @@ function AccountsTab() {
         <DialogContent className="border-border/50">
           <DialogHeader><DialogTitle>إضافة مستخدم جديد</DialogTitle><DialogDescription>أنشئ حساب إداري للوحة التحكم</DialogDescription></DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">البريد الإلكتروني</label><input type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} dir="ltr" placeholder="admin@atheer.ye" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور</label><input type="password" value={form.password} onChange={e => setForm(p => ({...p, password: e.target.value}))} dir="ltr" placeholder="••••••••" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">البريد الإلكتروني</label><input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} dir="ltr" placeholder="admin@atheer.ye" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور</label><input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} dir="ltr" placeholder="••••••••" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">الدور</label><select value={form.role} onChange={e => setForm(p => ({...p, role: e.target.value}))} className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
-              <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">النطاق</label><input type="text" value={form.scope} onChange={e => setForm(p => ({...p, scope: e.target.value}))} dir="ltr" placeholder="global أو wallet:jawali" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
+              <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">الدور</label><select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">النطاق</label><input type="text" value={form.scope} onChange={e => setForm(p => ({ ...p, scope: e.target.value }))} dir="ltr" placeholder="global أو wallet:jawali" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
             </div>
             {formError && <div className="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-400">{formError}</div>}
           </div>
@@ -376,9 +379,9 @@ function SystemTab() {
         <CardHeader><CardTitle className="text-sm">إعدادات الأمان</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">نافذة التطلع (lookAheadWindow)</label><input type="number" value={lookAhead} onChange={e => setLookAhead(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/><p className="text-[10px] text-muted-foreground">عدد العدادات المسموح بها مقدماً</p></div>
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">حد الدافع الافتراضي</label><input type="number" value={payerLimit} onChange={e => setPayerLimit(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/><p className="text-[10px] text-muted-foreground">بالوحدة الصغرى (ريال × 100)</p></div>
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">تفاوت الطابع الزمني (ثانية)</label><input type="number" value={tolerance} onChange={e => setTolerance(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/><p className="text-[10px] text-muted-foreground">الفرق المسموح بالثواني</p></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">نافذة التطلع (lookAheadWindow)</label><input type="number" value={lookAhead} onChange={e => setLookAhead(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /><p className="text-[10px] text-muted-foreground">عدد العدادات المسموح بها مقدماً</p></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">حد الدافع الافتراضي</label><input type="number" value={payerLimit} onChange={e => setPayerLimit(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /><p className="text-[10px] text-muted-foreground">بالوحدة الصغرى (ريال × 100)</p></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">تفاوت الطابع الزمني (ثانية)</label><input type="number" value={tolerance} onChange={e => setTolerance(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /><p className="text-[10px] text-muted-foreground">الفرق المسموح بالثواني</p></div>
           </div>
         </CardContent>
       </Card>
@@ -388,13 +391,13 @@ function SystemTab() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <button onClick={() => setTgEnabled(!tgEnabled)} className={`relative h-6 w-11 rounded-full transition-colors ${tgEnabled ? "bg-blue-500" : "bg-muted"}`}>
-              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${tgEnabled ? "right-0.5" : "right-[22px]"}`}/>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${tgEnabled ? "right-0.5" : "right-[22px]"}`} />
             </button>
             <span className="text-sm">{tgEnabled ? "مفعّلة" : "معطّلة"}</span>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">Bot Token</label><input type="password" value={tgToken} onChange={e => setTgToken(e.target.value)} dir="ltr" placeholder="123456:ABC-DEF..." className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">Chat ID</label><input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} dir="ltr" placeholder="-1001234567890" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">Bot Token</label><input type="password" value={tgToken} onChange={e => setTgToken(e.target.value)} dir="ltr" placeholder="123456:ABC-DEF..." className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">Chat ID</label><input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} dir="ltr" placeholder="-1001234567890" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
           </div>
         </CardContent>
       </Card>
@@ -451,10 +454,10 @@ function ProfileTab() {
       <Card className="border-border/50">
         <CardHeader><CardTitle className="text-sm">تغيير كلمة المرور</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور الحالية</label><input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
+          <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور الحالية</label><input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور الجديدة</label><input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
-            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">تأكيد كلمة المرور</label><input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">كلمة المرور الجديدة</label><input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div className="space-y-1"><label className="text-xs font-medium text-muted-foreground">تأكيد كلمة المرور</label><input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} dir="ltr" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
           </div>
           {passMsg && <div className={`rounded-md px-3 py-2 text-sm ${passMsg.includes("نجاح") ? "border border-emerald-500/20 bg-emerald-500/5 text-emerald-400" : "border border-red-500/20 bg-red-500/5 text-red-400"}`}>{passMsg}</div>}
           <button onClick={handleChangePass} disabled={passLoading} className="rounded-lg bg-gradient-to-l from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-600/20 disabled:opacity-50">{passLoading ? "جارٍ التغيير..." : "تغيير كلمة المرور"}</button>
